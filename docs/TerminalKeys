@@ -1,0 +1,23 @@
+General
+q = quit
+p = pause
+
+Advanced tweaking (Not recommended)
+r = increase delay between audio frames (increases accuracy but slower)
+f = decrease delay between audio frames (decreases accuracy but faster)
+d - toggle to interpolate bars (Smooths out the bars, but adds "visual" delay)
+
+Bar Visuals
+t = lower ceiling (bars react more, like raising the volume)
+g = raise ceiling (bars react less, like lowering the volume)
+y = decrease bar thickness
+u = increase bar thickness
+h = decrease gap thickness
+j = increase gap thickness
+
+Debug
+n = show audio frames amount
+b = show bars amount
+v = show audio delay
+c = show ceiling number
+x = show FPS
