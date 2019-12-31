@@ -1,25 +1,25 @@
 # ReVidia Audio Visualizer
 A highly customizable real time audio visualizer on Linux/Windows
 ## Requirements
-### Linux: Python 3.7+ and Portaudio
+#### Linux: Python 3.7+ and Portaudio
 
 - Most distros should have Python already installed
 - If you don't have PortAudio, download and compile it from:
 http://www.portaudio.com/download.html
   - If you can, use your packaging manager to install PortAudio
 
-### Windows: Python 3.7+ with PATHS
+#### Windows: Python 3.7+ with PATHS
 - Download Python here: https://www.python.org/downloads/
 - During installation **MAKE SURE** you check the box: "Add Python to PATH"
 
 #### Highly recommend installing VB-CABLE for Windows (See Below in Important Notes)
 
 ## Installation
-### On Linux in the project directory run:
+#### On Linux in the project directory run:
 ```
 chmod +x install.sh && ./install.sh
 ```
-### On Windows run:
+#### On Windows run:
 ```
 install.bat
 ```
