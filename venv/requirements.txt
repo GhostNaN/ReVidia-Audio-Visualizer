@@ -1,0 +1,7 @@
+cffi==1.13.2
+numpy==1.18.0
+PyAudio==0.2.11
+pycparser==2.19
+PyQt5==5.14.0
+PyQt5-sip==12.7.0
+sounddevice==0.3.14
