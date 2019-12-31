@@ -1,6 +1,9 @@
 ![Revidia](https://i.imgur.com/gX2rNVx.png "ReVidia")
 # ReVidia Audio Visualizer
-A highly customizable real time audio visualizer on Linux/Windows
+### A highly customizable real time audio visualizer on Linux/Windows
+#### Branches:
+- Linux: master branch
+- Windows: win-port branch 
 ## Requirements
 #### Linux: Python 3.7+ and Portaudio
 
@@ -25,14 +28,14 @@ chmod +x install.sh && ./install.sh
 install.bat
 ```
 #### Once Started:
-- It might take a couple a minutes, wait until it says "Done"
+- It might take a couple of minutes, wait until it says "Done"
 - Then use the desktop shorcut created to enjoy! 🎉
 #### Note: Run the installer again if you move the file at all
 
 ## Important Notes:
 #### This program ONLY accepts input(mics) audio streams for now
 
-If you are on **Linux** and want use your speakers audio I recommend using jack like in this guide:
+If you are on **Linux** and want to use your speakers audio I recommend using jack like in this guide:
 - https://forum.manjaro.org/t/how-to-replace-pulseaudio-with-jack-jack-and-pulseaudio-together-as-friend/2086
 - Or by using some other form of loopback software for now
   
@@ -45,6 +48,7 @@ If you are using **Windows** I HIGHLY recommend installing VB-CABLE:
 ## Future Ideas:
 #### In order of importance:
 - Implement better solution to using speakers on Linux
+- Make a profile/config feature
 - Add a "Curvey" modifier
 - General optimizing
 - Fix how transparency is done on Windows
