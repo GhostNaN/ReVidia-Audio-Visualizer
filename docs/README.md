@@ -1,4 +1,4 @@
-![Revidia](https://i.imgur.com/gX2rNVx.png "ReVidia")
+![Preview](Preview.png)
 # ReVidia Audio Visualizer
 ### A highly customizable real time audio visualizer on Linux/Windows
 #### Branches:
@@ -60,6 +60,6 @@ If you are using **Windows** I HIGHLY recommend installing VB-CABLE:
 - PyQt5 and QT for the GUI
 
  ## License
-This project is licensed under the GPLv3 License - see the LICENSE.md file for details
+This project is licensed under the GPLv3 License - see the LICENSE.txt file for details
 
-### For more information please look at the real ReadMe included
+### For more information please look at the real ReadMe.txt included
