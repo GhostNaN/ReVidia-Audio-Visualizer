@@ -35,7 +35,7 @@ install.bat
 ## Important Notes:
 #### This program ONLY accepts input(mics) audio streams for now
 
-If you are on **Linux** and want to use your speakers audio I recommend using jack like in this guide:
+If you are on **Linux** and want to use your speaker's audio I recommend using jack like in this guide:
 - https://forum.manjaro.org/t/how-to-replace-pulseaudio-with-jack-jack-and-pulseaudio-together-as-friend/2086
 - Or by using some other form of loop back software for now
   
