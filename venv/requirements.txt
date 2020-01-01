@@ -4,4 +4,3 @@ numpy==1.18.0
 pycparser==2.19
 PyQt5==5.14.0
 PyQt5-sip==12.7.0
-sounddevice==0.3.14
