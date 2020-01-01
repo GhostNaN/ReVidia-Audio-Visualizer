@@ -10,7 +10,6 @@ import queue
 import threading as th
 import numpy as np
 import subprocess as subp
-import sounddevice  # This is imported to suppress portaudio debug errors
 
 # Default global variables
 width = 64          # fallback width
@@ -32,6 +31,7 @@ timeDStart = 0
 
 # Displays device ID options
 p = pyaudio.PyAudio()
+os.system('clear')
 numDevices = p.get_device_count()
 for ID in range(numDevices):
     if (p.get_device_info_by_index(ID).get('maxInputChannels')) > 0:
