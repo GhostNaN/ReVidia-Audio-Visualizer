@@ -10,7 +10,7 @@
 - Most distros should have Python already installed
 - If you don't have PortAudio, download and compile it from:
 http://www.portaudio.com/download.html
-  - If you can, use your packaging manager to install PortAudio
+  - If you can, use your package manager to install PortAudio
 
 #### Windows: Python 3.7+ with PATHS
 - Download Python here: https://www.python.org/downloads/
@@ -29,7 +29,7 @@ install.bat
 ```
 #### Once Started:
 - It might take a couple of minutes, wait until it says "Done"
-- Then use the desktop shorcut created to enjoy! 🎉
+- Then use the desktop shortcut created to enjoy! 🎉
 #### Note: Run the installer again if you move the file at all
 
 ## Important Notes:
@@ -37,22 +37,22 @@ install.bat
 
 If you are on **Linux** and want to use your speakers audio I recommend using jack like in this guide:
 - https://forum.manjaro.org/t/how-to-replace-pulseaudio-with-jack-jack-and-pulseaudio-together-as-friend/2086
-- Or by using some other form of loopback software for now
+- Or by using some other form of loop back software for now
   
 If you are using **Windows** I HIGHLY recommend installing VB-CABLE:
 - https://www.vb-audio.com/Cable/index.htm#DownloadCable  
-- Not only will it allow you use your speaker audio easily
-- But depending on your system it not might even run properly without the APIs it provides
+- Not only will it allow you to use your speaker's audio easily
+- But depending on your system, it not might even run properly without the APIs it provides
 - To use VB-CABLE follow the guide in the "Readme.txt"
   
 ## Future Ideas:
 #### In order of importance:
-- Implement better solution to using speakers on Linux
+- Implement a better solution to using speakers on Linux
 - Make a profile/config feature
-- Add a "Curvey" modifier
+- Add a "Curvy" modifier
 - General optimizing
 - Fix how transparency is done on Windows
-- Overhaul the old linux terminal version
+- Overhaul the old Linux terminal version
 
 ## Acknowledgments
 - Numpy mostly for the FFT
