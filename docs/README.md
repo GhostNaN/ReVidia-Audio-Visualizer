@@ -37,7 +37,7 @@ install.bat
 
 If you are on **Linux** and want to use your speaker's audio I recommend using jack like in this guide:
 - https://forum.manjaro.org/t/how-to-replace-pulseaudio-with-jack-jack-and-pulseaudio-together-as-friend/2086
-- Or by using some other form of loop back software for now
+- Or something like this: https://unix.stackexchange.com/questions/82259/how-to-pipe-audio-output-to-mic-input#
   
 If you are using **Windows** I HIGHLY recommend installing VB-CABLE:
 - https://www.vb-audio.com/Cable/index.htm#DownloadCable  
