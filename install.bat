@@ -1,7 +1,10 @@
 :: Create venv required
 python -m venv venv
 call %cd%\venv\Scripts\activate
-pip install -r %cd%\venv\requirements.txt
+
+:: Install dependencies
+venv\Get_PyAudio.py
+pip install -r venv\requirements.txt
 
 :: Create desktop shortcut
 set SCRIPT="%TEMP%\%RANDOM%-%RANDOM%-%RANDOM%-%RANDOM%.vbs"
