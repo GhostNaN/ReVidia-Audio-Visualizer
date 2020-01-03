@@ -1,28 +1,17 @@
 ![Preview](Preview.png)
-# ReVidia Audio Visualizer
+# ReVidia Audio Visualizer [Windows Branch]
 ### A highly customizable real time audio visualizer on Linux/Windows
 #### Branches:
 - Linux: master branch
 - Windows: win-port branch 
 ## Requirements
-#### Linux: Python 3.7+ and Portaudio
-
-- Most distros should have Python already installed
-- If you don't have PortAudio, download and compile it from:
-http://www.portaudio.com/download.html
-  - If you can, use your package manager to install PortAudio
-
-#### Windows: Python 3.7+ with PATHS
+#### Windows: Python 3.8 with PATHS
 - Download Python here: https://www.python.org/downloads/
 - During installation **MAKE SURE** you check the box: "Add Python to PATH"
 
 #### Highly recommend installing VB-CABLE for Windows (See Below in Important Notes)
 
 ## Installation
-#### On Linux in the project directory run:
-```
-chmod +x install.sh && ./install.sh
-```
 #### On Windows run:
 ```
 install.bat
@@ -33,12 +22,7 @@ install.bat
 #### Note: Run the installer again if you move the file at all
 
 ## Important Notes:
-#### This program ONLY accepts input(mics) audio streams for now
-
-If you are on **Linux** and want to use your speaker's audio I recommend using jack like in this guide:
-- https://forum.manjaro.org/t/how-to-replace-pulseaudio-with-jack-jack-and-pulseaudio-together-as-friend/2086
-- Or by using some other form of loop back software for now
-  
+#### This program ONLY accepts input(mics) audio streams for now 
 If you are using **Windows** I HIGHLY recommend installing VB-CABLE:
 - https://www.vb-audio.com/Cable/index.htm#DownloadCable  
 - Not only will it allow you to use your speaker's audio easily
