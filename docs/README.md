@@ -12,7 +12,7 @@
 http://www.portaudio.com/download.html
   - If you can, use your package manager to install PortAudio
 
-#### Windows: Python 3.7+ with PATHS
+#### Windows: Python 3.8 with PATHS
 - Download Python here: https://www.python.org/downloads/
 - During installation **MAKE SURE** you check the box: "Add Python to PATH"
 
