@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import sys
-import re
 import time
 import queue
 import threading as th
@@ -31,22 +30,25 @@ class ReVidiaMain(QMainWindow):
 
         # Default variables
         self.title = 'ReVidia'
-        self.split = 0
         self.frameRate = 100
+        self.split = 0
+        self.curvy = 0
         self.interp = 2
         self.audioFrames = 4096
         self.backgroundColor = QColor(50, 50, 50, 255)
         self.barColor = QColor(255, 255, 255, 255)      # R, G, B, Alpha 0-255
         self.outlineColor = QColor(0, 0, 0)
+        self.lumen = 0
+        self.checkRainbow = 0
         self.textPalette = QPalette()
-        self.barHeight = 0.001
-        self.outlineThick = 0
         self.barWidth = 14
         self.gapWidth = 6
+        self.outlineThick = 0
+        self.barHeight = 0.001
         self.wholeWidth = self.barWidth + self.gapWidth
-        self.checkRainbow = 0
         self.outline = 0
         self.cutout = 0
+        self.checkFreq = 0
         self.checkNotes = 0
         self.checkLateNum = 0
         self.checkBarNum = 0
@@ -81,8 +83,22 @@ class ReVidiaMain(QMainWindow):
 
         split = QAction('Split Audio', self)
         split.setCheckable(True)
+        split.setChecked(self.split)
         split.setToolTip('Toggle to Split Audio Channels')
         split.toggled.connect(self.setSplit)
+
+        curvyMenu = QMenu('Curviness', self)
+        curvyMenu.setToolTip('Set How Much the Bars Curve')
+        curvySettings = ['No Curves', 'Sharp', 'Mid', 'Loose']
+        curveList = [0, 5, 9, 17]
+        self.curvyDict = {}
+        for f in range(4):
+            curve = curveList[f]
+            self.curvyDict[str(curve)] = QAction(curvySettings[f], self)
+            self.curvyDict[str(curve)].setCheckable(True)
+            self.curvyDict[str(curve)].triggered.connect(lambda checked, index=curve: self.setCurve(index))
+            curvyMenu.addAction(self.curvyDict[str(curve)])
+        self.curvyDict[str(self.curvy)].setChecked(True)
 
         interpMenu = QMenu('Interpolation', self)
         interpMenu.setToolTip('Set Interp Amount (Smoothing)')
@@ -120,6 +136,7 @@ class ReVidiaMain(QMainWindow):
         rainbowColor = QAction('Rainbow', self)
         rainbowColor.setCheckable(True)
         rainbowColor.triggered.connect(self.setRainbow)
+
         color.addAction(barColor)
         color.addAction(backColor)
         color.addAction(outColor)
@@ -130,63 +147,85 @@ class ReVidiaMain(QMainWindow):
         barSize.setToolTip('Change the Bars Dimensions')
         barSize.toggled.connect(self.showBarSize)
 
+        lumen = QAction('Illuminate', self)
+        lumen.setCheckable(True)
+        lumen.setToolTip('Change the Bars Alpha Scale')
+        lumen.triggered.connect(self.showLumen)
+
         outline = QAction('Outline Only', self)
         outline.setCheckable(True)
+        outline.setChecked(self.outline)
         outline.setToolTip('Toggle Outline/Turn Off Fill')
         outline.toggled.connect(self.setOutline)
 
         cutout = QAction('Cutout', self)
         cutout.setCheckable(True)
+        cutout.setChecked(self.cutout)
         cutout.setToolTip('Toggle to Cutout Background with Bars')
         cutout.toggled.connect(self.setCutout)
 
+        freq = QAction('Frequencies', self)
+        freq.setCheckable(True)
+        freq.setChecked(self.checkFreq)
+        freq.setToolTip('Show Each Bar\'s Frequency')
+        freq.toggled.connect(self.showFreq)
+
         notes = QAction('Notes', self)
         notes.setCheckable(True)
+        notes.setChecked(self.checkNotes)
         notes.setToolTip('Guesses the Notes')
         notes.toggled.connect(self.showNotes)
 
         lateNum = QAction('Late Frames', self)
         lateNum.setCheckable(True)
+        lateNum.setChecked(self.checkLateNum)
         lateNum.setToolTip('Display Amount of Late Video Frames')
         lateNum.toggled.connect(self.showLateFrames)
 
         barNum = QAction('Bars', self)
         barNum.setCheckable(True)
+        barNum.setChecked(self.checkBarNum)
         barNum.setToolTip('Display Amount of Bars')
         barNum.toggled.connect(self.showBarNum)
 
         latNum = QAction('Latency', self)
         latNum.setCheckable(True)
+        latNum.setChecked(self.checkLatency)
         latNum.setToolTip('Display Latency Between Display and Audio')
         latNum.toggled.connect(self.showLatency)
 
         dbBar = QAction('dB Bar', self)
         dbBar.setCheckable(True)
+        dbBar.setChecked(self.checkDB)
         dbBar.setToolTip('Display dB Bar Indicating Volume')
         dbBar.toggled.connect(self.showDB)
 
-        fpsSpinBox = QSpinBox()
-        fpsSpinBox.setRange(1, 999)
-        fpsSpinBox.setSuffix(' FPS')
-        fpsSpinBox.setMaximumWidth(70)
-        fpsSpinBox.setMaximumHeight(20)
-        fpsSpinBox.valueChanged[int].connect(self.setFPS)
-        fpsSpinBox.setValue(self.frameRate)
-        fpsSpinBox.setKeyboardTracking(False)
-        self.fpsDock = QDockWidget(self)
-        self.fpsDock.move(150, -20)
-        self.fpsDock.setFeatures(QDockWidget.NoDockWidgetFeatures)
-        self.fpsDock.setWidget(fpsSpinBox)
-        self.fpsDock.show()
+        self.fpsSpinBox = QSpinBox()
+        self.fpsSpinBox.setRange(1, 999)
+        self.fpsSpinBox.setSuffix(' FPS')
+        self.fpsSpinBox.setMaximumWidth(70)
+        self.fpsSpinBox.setMaximumHeight(20)
+        self.fpsSpinBox.valueChanged[int].connect(self.setFPS)
+        self.fpsSpinBox.setValue(self.frameRate)
+        self.fpsSpinBox.setKeyboardTracking(False)
+        self.fpsSpinBox.setFocusPolicy(Qt.ClickFocus)
+        fpsDock = QDockWidget(self)
+        fpsDock.move(150, -20)
+        fpsDock.setFeatures(QDockWidget.NoDockWidgetFeatures)
+        fpsDock.setWidget(self.fpsSpinBox)
+        fpsDock.show()
 
         mainMenu.addAction(viewDevices)
         mainMenu.addAction(split)
+        mainMenu.addMenu(curvyMenu)
         mainMenu.addMenu(interpMenu)
         mainMenu.addMenu(frames)
         designMenu.addMenu(color)
         designMenu.addAction(barSize)
+        designMenu.addAction(lumen)
         designMenu.addAction(outline)
         designMenu.addAction(cutout)
+        statsMenu.addAction(freq)
         statsMenu.addAction(notes)
         statsMenu.addAction(lateNum)
         statsMenu.addAction(barNum)
@@ -240,9 +279,9 @@ class ReVidiaMain(QMainWindow):
     # Gets audio devices
     def getDevice(self, firstRun):
         deviceList = (deviceName(self.PA))
-        device, ok = QInputDialog.getItem(self, "ReVidia", "Select Audio Input Device:", deviceList, 0, False)
+        device, ok = QInputDialog.getItem(self, "ReVidia", "Select Audio Input Device:", deviceList[0], 0, False)
         if ok and device:
-            self.ID = int(re.findall(r'- (\d+)', device)[0])
+            self.ID = deviceList[1][deviceList[0].index(device)]
             if firstRun: return
             else:
                 self.Q1.put(1), self.Q1.put(1)  # Trip breaker to stop data collection
@@ -281,10 +320,10 @@ class ReVidiaMain(QMainWindow):
 
         # Process audio data
         oldBarValues = self.barValues
-        self.barValues = revidiaLoop(self.dataList, self.widthSize, self.audioFrames)
+        self.barValues = processData(self.dataList, self.widthSize, self.sampleRate, self.curvy)
         oldSplitValues = self.splitBarValues
         if self.split:
-            self.splitBarValues = revidiaLoop(self.rightDataList, self.widthSize, self.audioFrames)
+            self.splitBarValues = processData(self.rightDataList, self.widthSize, self.sampleRate, self.curvy)
 
         # Smooth audio data using past averages
         if self.interp:
@@ -317,8 +356,8 @@ class ReVidiaMain(QMainWindow):
         self.paintBackground(event, painter)
         if not self.cutout:
             self.paintBars(event, painter)
-        if self.checkNotes:
-            self.paintNotes(event, painter)
+        if self.checkFreq or self.checkNotes:
+            self.paintFreq(event, painter)
         if self.checkDB:
             self.paintDB(event, painter)
         painter.end()
@@ -337,7 +376,7 @@ class ReVidiaMain(QMainWindow):
                 ySize = self.size().height() - ySizeV
                 painter.drawRect(xPos - self.gapWidth, yPos, self.gapWidth, self.size().height())   # Gap bar
 
-                if self.split and self.splitBarValues != [0]:
+                if self.split:
                     ySplitV = int(self.splitBarValues[y] * self.barHeight)
                     ySize = (self.size().height() // 2) - ySizeV
                     painter.drawRect(xPos, yPos, xSize, ySize)  # Top background
@@ -359,12 +398,22 @@ class ReVidiaMain(QMainWindow):
         xPos = (self.gapWidth // 2)
         yPos = self.size().height()
         viewHeight = self.size().height()
-        painter.setBrush(self.barColor)  # Fill of bar color
+        if self.lumen:
+            lumReigen = 255 / (viewHeight * (self.lumen / 100))
+
+        painter.setBrush(self.barColor)
 
         for y in range(len(self.barValues)):
             ySize = int(self.barValues[y] * self.barHeight)
 
-            if self.split and self.splitBarValues != [0]:
+            if self.lumen:
+                color = QColor(self.barColor)
+                lumBright = int(ySize * lumReigen)
+                if lumBright > 255: lumBright = 255
+                color.setAlpha(lumBright)
+                painter.setBrush(color)  # Fill of bar color
+
+            if self.split:
                 if ySize > viewHeight // 2:
                     ySize = viewHeight // 2
                 ySplitV = int(self.splitBarValues[y] * self.barHeight)
@@ -398,8 +447,9 @@ class ReVidiaMain(QMainWindow):
 
                 xPos += self.wholeWidth
 
-    # Draws notes being guessed on by plot frequency
-    def paintNotes(self, event, painter):
+    # Draw frequency plot
+    def paintFreq(self, event, painter):
+        # Set pen color to contrast bar color
         pen = QPen()
         if self.barColor.value() <= 128:
             pen.setColor(QColor(255, 255, 255))
@@ -407,19 +457,45 @@ class ReVidiaMain(QMainWindow):
             pen.setColor(QColor(0, 0, 0))
         painter.setPen(pen)
         font = QFont()
+        # Scale text with bar size
         fontSize = self.barWidth - (self.outlineThick * 2) - 1
         if fontSize < 1: fontSize = 1
         font.setPixelSize(fontSize)
         painter.setFont(font)
 
-        notes = plotNotes(self.audioFrames, self.sampleRate, self.widthSize)
-        xSize = self.barWidth + 1
-        ySize = xSize + 5
-        xPos = self.gapWidth // 2
-        yPos = self.size().height() - self.barWidth - 5
-        for note in notes:
-            painter.drawText(xPos, yPos, xSize, ySize, Qt.AlignHCenter, note)
-            xPos += self.wholeWidth
+        freqList = assignFreq(self.audioFrames, self.sampleRate, self.widthSize)
+
+        # Paint frequency plot
+        if self.checkFreq:
+            xSize = fontSize
+            ySize = int(fontSize * 1.5)
+            xPos = self.gapWidth // 2
+            yPos = self.size().height()
+            for freq in freqList:
+                freq = round(freq)
+
+                digits = 0
+                number = freq
+                if number == 0:
+                    digits = 1
+                while number > 0:
+                    number //= 10
+                    digits += 1
+                yTextSize = ySize * digits
+                yTextPos = yPos - ((digits * ySize) - digits)
+                painter.drawText(xPos, yTextPos, xSize, yTextSize, Qt.AlignHCenter | Qt.TextWrapAnywhere, str(freq))
+                xPos += self.wholeWidth
+
+        # Instead of painting freq, give a approximation of notes
+        elif self.checkNotes:
+            notes = assignNotes(freqList)
+            xSize = self.barWidth + 1
+            ySize = xSize + 5
+            xPos = self.gapWidth // 2
+            yPos = self.size().height() - self.barWidth - 5
+            for note in notes:
+                painter.drawText(xPos, yPos, xSize, ySize, Qt.AlignHCenter, note)
+                xPos += self.wholeWidth
 
     # Draws a dB bar in right corner
     def paintDB(self, event, painter):
@@ -460,6 +536,14 @@ class ReVidiaMain(QMainWindow):
         self.Q1.put(1), self.Q1.put(1)  # Trip breaker to stop data collection
         self.T1.join()
         self.startVidia()
+
+    # Sets how wide the curves selected
+    def setCurve(self, index):
+        self.curvy = index
+
+        for f in self.curvyDict:
+            if int(f) != index:
+                self.curvyDict[str(f)].setChecked(False)
 
     # Sets amount of Frames Per Sec selected
     def setFPS(self, value):
@@ -665,6 +749,41 @@ class ReVidiaMain(QMainWindow):
         self.showHeightTextInt.setGeometry(30, 85, 45, 20)
         self.showHeightTextInt.show()
 
+    # Shows the Light Limit scroll bar
+    def showLumen(self, on):
+        if on:
+            self.showLumenText = QLabel(self)
+            self.showLumenText.setText('Light Limit')
+            self.showLumenText.setGeometry(30, 235, 75, 20)
+            self.showLumenText.show()
+            self.lumenScroll = QSlider(Qt.Vertical, self)
+            self.lumenScroll.setMaximum(100)
+            self.lumenScroll.setValue(self.lumen)
+            self.lumenScroll.setGeometry(0, 240, 20, 100)
+            self.lumenScroll.valueChanged[int].connect(self.setLumen)
+            self.lumenScroll.show()
+            self.showLumenInt()
+        else:
+            self.showLumenText.close()
+            self.lumenScroll.close()
+
+            self.showLumenTextInt.close()
+
+    # Sets Light Limit selected
+    def setLumen(self, value):
+        self.lumen = value
+        self.showLumenInt()
+
+    # Shows current lumen int
+    def showLumenInt(self):
+        if hasattr(self, 'showLumenTextInt'):
+            self.showLumenTextInt.close()
+
+        self.showLumenTextInt = QLabel(self)
+        self.showLumenTextInt.setText(str(self.lumen) + '%')
+        self.showLumenTextInt.setGeometry(30, 255, 50, 20)
+        self.showLumenTextInt.show()
+
     # Sets bars outline only
     def setOutline(self, on):
         if on:
@@ -679,16 +798,25 @@ class ReVidiaMain(QMainWindow):
         else:
             self.cutout = 0
 
+    # Sets if to show the bars frequency plot
+    def showFreq(self, on):
+        if on:
+            self.checkFreq = 1
+            self.checkNotes = 0
+        else:
+            self.checkFreq = 0
+
     # Show estimation of where notes are
     def showNotes(self, on):
         if on:
             self.checkNotes = 1
+            self.checkFreq = 0
         else:
             self.checkNotes = 0
     
     # Show how many frames fail to meet frame time set
     def showLateFrames(self, on):
-        if self.checkLateNum:
+        if hasattr(self, 'showLateNumText'):
             self.showLateNumText.close()
         else:
             self.showLateNumText = QLabel(self)
@@ -713,7 +841,7 @@ class ReVidiaMain(QMainWindow):
 
     # Shows the amount of bars on screen
     def showBarNum(self, on):
-        if self.checkBarNum:
+        if hasattr(self, 'showBarNumText'):
             self.showBarNumText.close()
         else:
             self.showBarNumText = QLabel(self)
@@ -733,10 +861,11 @@ class ReVidiaMain(QMainWindow):
 
     # Shows latency in milliseconds between the audio and bars being drawn
     def showLatency(self, on):
-        if self.checkLatency:
+        if hasattr(self, 'showLatencyNum'):
             self.showLatencyNum.close()
         else:
             self.showLatencyNum = QLabel(self)
+            self.latency = 0
         if on:
             self.checkLatency = 1
 
@@ -766,7 +895,7 @@ class ReVidiaMain(QMainWindow):
             if self.menuToggle == 0:
                 self.menuToggle = 1
                 self.menuBar().hide()
-                self.fpsDock.hide()
+                self.fpsSpinBox.hide()
                 return
             if self.menuToggle == 1:
                 self.menuToggle = 2
@@ -779,7 +908,7 @@ class ReVidiaMain(QMainWindow):
                 oldY = self.y()
                 self.setWindowFlags(self.windowFlags() & ~Qt.FramelessWindowHint)
                 self.menuBar().show()
-                self.fpsDock.show()
+                self.fpsSpinBox.show()
                 self.show()
                 self.move(self.x() - 8, oldY - 31)  # Fixes a weird bug with the window
                 return
@@ -799,8 +928,7 @@ class ReVidiaMain(QMainWindow):
         sys.exit()
 
 
-# Main class to run program
-class RunUI:
+# Starts program
+if __name__ == '__main__':
     app = QApplication(sys.argv)
-    ex = ReVidiaMain()
-    sys.exit(app.exec_())
+    ReVidiaMain()
