@@ -307,9 +307,10 @@ class ReVidiaMain(QMainWindow):
     # Creates the bars for painter to draw
     def prePaint(self):
         # Get audio data
-        self.dataList = self.Q1.get()
-        if self.split:
-            self.rightDataList = self.Q2.get()
+        while len(self.dataList) < self.audioFrames:
+            self.dataList = self.Q1.get()
+            if self.split:
+                self.rightDataList = self.Q2.get()
 
         # Process audio data
         oldBarValues = self.barValues
