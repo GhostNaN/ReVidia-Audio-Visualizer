@@ -1,6 +1,6 @@
 :: Create venv required
 python -m venv venv
-call %cd%\venv\Scripts\activate
+call venv\Scripts\activate
 
 :: Install dependencies
 venv\Get_PyAudio.py
