@@ -27,13 +27,14 @@ If you are using **Windows** I HIGHLY recommend installing VB-CABLE:
 - https://www.vb-audio.com/Cable/index.htm#DownloadCable  
 - Not only will it allow you to use your speaker's audio easily
 - But depending on your system, it not might even run properly without the APIs it provides
-- To use VB-CABLE follow the guide in the "Readme.txt"
+- To use VB-CABLE follow the guide in the "WindowsReadme.txt"
   
 ## Future Ideas:
 #### In order of importance:
-- Implement a better solution to using speakers on Linux
+- Add true multiprocessing
+- Add a option to scale the frequencies
 - Make a profile/config feature
-- Add a "Curvy" modifier
+- Implement a loop back to speakers on Linux/Windows
 - General optimizing
 - Fix how transparency is done on Windows
 - Overhaul the old Linux terminal version
@@ -44,6 +45,6 @@ If you are using **Windows** I HIGHLY recommend installing VB-CABLE:
 - PyQt5 and QT for the GUI
 
  ## License
-This project is licensed under the GPLv3 License - see the LICENSE.txt file for details
+This project is licensed under the GPLv3 License - see the [LICENSE](/LICENSE.txt) file for details
 
-### For more information please look at the real ReadMe.txt included
+### For more information please look at the real [ReadMe](/WinReadMe.txt) included
