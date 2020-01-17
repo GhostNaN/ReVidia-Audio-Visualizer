@@ -4,78 +4,167 @@ import pyaudio
 import struct
 import numpy as np
 from math import factorial
-
-
-def getPA():    # PortAudio
-    return pyaudio.PyAudio()
+import time
+import sys
 
 
 # Displays device ID options
-def deviceName(p):
-    deviceList, idList = [], []
+def deviceNames(q):
+    p = pyaudio.PyAudio()
+    deviceList, idList, sampleList = [], [], []
     numDevices = p.get_device_count()
     for ID in range(numDevices):
         if (p.get_device_info_by_index(ID).get('maxInputChannels')) > 0:
-            deviceList.append(p.get_device_info_by_index(ID).get('name'))
+            API = p.get_host_api_info_by_index(p.get_device_info_by_index(ID).get('hostApi')).get('name')
+            deviceList.append(p.get_device_info_by_index(ID).get('name') + ' - ' + str(API))
             idList.append(ID)
-    deviceList = [deviceList, idList]
-    return deviceList
+            sampleList.append(p.get_device_info_by_index(ID).get('defaultSampleRate'))
+
+    deviceList = [deviceList, idList, sampleList]
+    p.terminate()
+    q.put(deviceList)
 
 
-# Returns sample rate
-def sampleRate(p, device):
-    return int(p.get_device_info_by_index(device).get('defaultSampleRate'))
-
-
-# Open stream to collect audio data.
-def startStream(p, device, samples):
+# Collects the raw audio data and coverts to ints
+def collectData(dataTime, dataArr, dataArr2, dataQ, device, buffer, split):
+    p = pyaudio.PyAudio()
     stream = p.open(
         input_device_index=device,
         format=pyaudio.paInt16,
         channels=2,
-        rate=samples,
+        rate=int(p.get_device_info_by_index(device).get('defaultSampleRate')),
         input=True,
         frames_per_buffer=1)
-    return stream
 
-
-# Collects the raw audio data and coverts to ints
-def audioData(q1, q2, stream, frames, split):
-    monoList, leftList, rightList = [], [], []
+    i = 0
     while True:
-        data = stream.read(1, exception_on_overflow=False)
-        if not split:
-            monoList.append(sum(struct.unpack("2h", data)) // 2)
-            while len(monoList) > frames:
-                del (monoList[0])
+        while stream.get_read_available():
+            data = stream.read(1, exception_on_overflow=False)
+            if not split:
+                dataArr[i] = (sum(struct.unpack("2h", data)) // 2)
+            else:
+                dataArr[i] = (sum(struct.unpack("2h", data)[:1]))   # Left
+                dataArr2[i] = (sum(struct.unpack("2h", data)[1:]))  # Right
 
-                if q1.empty():
-                    q1.put(monoList)
+            if i < buffer - 1:
+                i += 1
+            else:
+                i = 0
         else:
-            leftList.append(sum(struct.unpack("2h", data)[:1]))   # Left
-            rightList.append(sum(struct.unpack("2h", data)[1:]))  # Right
-            while len(leftList) > frames:
-                del (leftList[0])
-                del (rightList[0])
+            time.sleep(0.00001)  # Sleep just a little to reduce CPU usage
 
-                if q1.empty() or q2.empty():
-                    q1.put(leftList)
-                    q2.put(rightList)
+        dataTime.value = time.time()
 
-        if q1.qsize() > 1:
-            break
+        # Request a setting change
+        while dataQ.qsize() > 0:
+            change = dataQ.get()
+
+            if 'kill' in change:
+                p.terminate()
+                sys.exit()
+            elif 'buffer' in change:  # Change a setting
+                buffer = change[1]
+            elif 'split' in change:
+                split = change[1]
+
+
+# Processes data into Y values of bars
+def processData(syncLock, dataTime, proTime, dataArr, dataArr2, proArr, proArr2, proQ, dataQ,
+                frameRate, buffer, split, barsAmt, sampleRate, curvy, interp):
+
+    killTimeout = 3  # How many seconds to wait for main thread
+    frameTime = 1 / frameRate
+    barValues = []
+    splitBarValues = []
+    oldList = []
+    oldSplitList = []
+    while True:
+        frameTimer = time.time()
+
+        # Get audio data
+        delayTime = dataTime.value  # Get current time of data
+        dataList = dataArr[:buffer]
+        if split:
+            rightDataList = dataArr2[:buffer]
+
+        # Transforms audio data
+        oldBarValues = barValues
+        barValues = transformData(dataList, barsAmt, sampleRate, curvy)
+        if split:
+            oldSplitValues = splitBarValues
+            splitBarValues = transformData(rightDataList, barsAmt, sampleRate, curvy)
+
+        # Smooth audio data using past averages
+        if interp:
+            if len(oldList) <= interp:
+                oldList.append(list(oldBarValues))
+                if split:
+                    oldSplitList.append(list(oldSplitValues))
+            while len(oldList) > interp:
+                del (oldList[0])
+            if split:
+                while len(oldSplitList) > interp:
+                    del (oldSplitList[0])
+
+            barValues = interpData(barValues, oldList)
+            if split:
+                splitBarValues = interpData(splitBarValues, oldSplitList)
+
+        # Send out data
+        proTime.value = delayTime
+        proArr[:barsAmt] = barValues
+        if split:
+            proArr2[:barsAmt] = splitBarValues
+
+        workTime = time.time() - frameTimer
+
+        # Request a setting change
+        while proQ.qsize() > 0:
+            request = proQ.get()
+
+            if 'kill' in request:
+                sys.exit()
+            elif 'frameRate' in request:
+                frameRate = request[1]
+                frameTime = 1 / frameRate
+            elif 'buffer' in request:
+                buffer = request[1]
+            elif 'split' in request:
+                split = request[1]
+            elif 'barsAmt' in request:
+                barsAmt = request[1]
+            elif 'curvy' in request:
+                curvy = request[1]
+            elif 'interp' in request:
+                interp = request[1]
+
+        killTime = time.time()
+        syncLock.acquire(timeout=killTimeout)
+        if (time.time() - killTime) > killTimeout:
+            dataQ.put(['kill'])
+            sys.exit()
+
+        # Based on previous processing time, delay for lower latency
+        delay = frameTime - workTime
+        if delay < 0:
+            delay = 0
+        # Scale margin for error based on work load
+        margin = 1 - ((workTime / frameTime) / 2)
+        if margin > 0.95: margin = 0.95
+        if (margin > 0) and (delay > 0):
+            time.sleep(delay * margin)
 
 
 # Assigns frequencies locations based on plots
-def assignFreq(frames, samples, width):
-    plot = samples / frames
+def assignFreq(buffer, samples, width):
+    plot = samples / buffer
 
     freqList = [0]
     noteNum = plot
     numFloat = plot
     point1 = 1000 / plot
     point1Pos = 0.66
-    endPoint = samples // 4
+    endPoint = 12000
 
     startGrow = int(width * point1Pos)
     if startGrow > 1:
@@ -124,7 +213,10 @@ def getDB(data):
     amp = max(data) / 32767
     if amp < 0:
         amp *= -1
-    dB = round(20 * np.log10(amp), 1)
+    if amp != 0:
+        dB = round(20 * np.log10(amp), 1)
+    else:
+        dB = -float('Inf')
 
     return dB
 
@@ -142,8 +234,8 @@ def interpData(barValues, oldList):
     return interpBarValues
 
 
-# Savitzky Golay Filter stolen/borrowed from "elviuz" on Stackoverflow and is much faster than SciPy
-def savitzky_golay(y, window_size, order, deriv=0, rate=1):
+# Savitzky Golay Filter straight from the SciPy Cookbook
+def savitzkyGolay(y, window_size, order, deriv=0, rate=1):
     try:
         window_size = np.abs(np.int(window_size))
         order = np.abs(np.int(order))
@@ -167,20 +259,19 @@ def savitzky_golay(y, window_size, order, deriv=0, rate=1):
 
 
 # Processes the audio data into proper
-def processData(dataList, width, samples, curvy=False):
+def transformData(dataList, width, samples, curvy=False):
 
-    frames = len(dataList)
-    plot = samples / frames
+    buffer = len(dataList)
+    plot = samples / buffer
     if width < 2: width = 2  # Prevents crash when window gets too small
-    if width > (frames//4): width = (frames//4)     # Prevents crash when width is too high
 
     # The heart of ReVidia, the fourier transform.
-    transform = np.fft.fft(dataList, frames)
-    absTransform = np.abs(transform[0:frames//2])     # Each plot is rate/frames = frequency
+    transform = np.fft.rfft(dataList, buffer)
+    absTransform = np.abs(transform)     # Each plot is rate/buffer = frequency
 
     point1 = 1000 / plot    # Points in the graph scales to
     point1Pos = 0.66
-    endPoint = frames // 4
+    endPoint = 12000 // plot
 
     startGrow = int(width * point1Pos)
     expoGrow = point1**(1 / startGrow)     # RATE=(END/1)**(1/STEPS)
@@ -202,6 +293,9 @@ def processData(dataList, width, samples, curvy=False):
 
     if curvy:
         curveArray = np.array(barValues)
-        barValues = savitzky_golay(curveArray, curvy, 3)  # data, window size, polynomial order
+        w = curvy[0]
+        p = curvy[1]
+        filtered = savitzkyGolay(curveArray, w, p)  # data, window size, polynomial order
+        barValues = list(map(int, filtered))
 
     return barValues
