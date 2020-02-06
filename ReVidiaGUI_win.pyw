@@ -6,7 +6,7 @@ import sys
 import time
 import threading as th
 import multiprocessing as mp
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QPoint, QRect
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 # Windows Icon fix
@@ -31,6 +31,12 @@ class ReVidiaMain(QMainWindow):
         # Default variables
         self.title = 'ReVidia'
         self.frameRate = 150
+        self.startPoint = 0
+        self.startCurve = 1
+        self.midPoint = 1000
+        self.midPointPos = 0.66
+        self.endCurve = 1
+        self.endPoint = 12000
         self.split = 0
         self.curvy = 0
         self.interp = 2
@@ -38,6 +44,7 @@ class ReVidiaMain(QMainWindow):
         self.backgroundColor = QColor(50, 50, 50, 255)
         self.barColor = QColor(255, 255, 255, 255)      # R, G, B, Alpha 0-255
         self.outlineColor = QColor(0, 0, 0)
+        self.gradient = 0
         self.lumen = 0
         self.checkRainbow = 0
         self.barWidth = 14
@@ -61,6 +68,7 @@ class ReVidiaMain(QMainWindow):
         self.setWindowIcon(QIcon('docs/REV.png'))
         self.setWindowTitle(self.title)
         self.setGeometry(self.left, self.top, self.width, self.height)
+        self.setMinimumSize(200, 150)
         self.setAttribute(Qt.WA_TranslucentBackground, True)    # Initial background is transparent
         self.setWindowFlags(Qt.FramelessWindowHint)
         self.setTextPalette()
@@ -78,6 +86,10 @@ class ReVidiaMain(QMainWindow):
         deviceDialog = QAction('Device', self)
         deviceDialog.setToolTip('Select Audio Device')
         deviceDialog.triggered.connect(self.getDevice)
+
+        scaleDialog = QAction('Scale', self)
+        scaleDialog.setToolTip('Modify the Scale')
+        scaleDialog.triggered.connect(self.getScaleDialog)
 
         splitCheck = QAction('Split Audio', self)
         splitCheck.setCheckable(True)
@@ -141,6 +153,10 @@ class ReVidiaMain(QMainWindow):
         colorMenu.addAction(backColorDialog)
         colorMenu.addAction(outColorDialog)
         colorMenu.addAction(rainbowCheck)
+
+        gradDialog = QAction('Gradient', self)
+        gradDialog.setToolTip('Create a Gradient')
+        gradDialog.triggered.connect(self.getGradDialog)
 
         sizesCheck = QAction('Dimensions', self)
         sizesCheck.setCheckable(True)
@@ -216,11 +232,13 @@ class ReVidiaMain(QMainWindow):
         fpsDock.show()
 
         mainMenu.addAction(deviceDialog)
+        mainMenu.addAction(scaleDialog)
         mainMenu.addAction(splitCheck)
         mainMenu.addMenu(curvyMenu)
         mainMenu.addMenu(interpMenu)
         mainMenu.addMenu(bufferMenu)
         designMenu.addMenu(colorMenu)
+        designMenu.addAction(gradDialog)
         designMenu.addAction(sizesCheck)
         designMenu.addAction(lumenCheck)
         designMenu.addAction(outlineCheck)
@@ -248,6 +266,9 @@ class ReVidiaMain(QMainWindow):
         self.paintBusy = 0
         self.paintTime = 0
         self.paintDelay = (1 / self.frameRate)
+        self.pointsList = [self.startPoint, self.startCurve, self.midPoint, self.midPointPos, self.endCurve, self.endPoint]
+        self.oldPoints = [self.startPoint, self.startCurve, self.midPoint, self.midPointPos, self.endCurve, self.endPoint]
+        self.updatePlots()
 
     def startProcesses(self):
         self.blockLock = th.Lock()
@@ -272,7 +293,7 @@ class ReVidiaMain(QMainWindow):
         # Create separate process for audio data processing
         self.P1 = mp.Process(target=ReVidia_win.processData, args=(
             self.syncLock, dataTime, self.proTime, self.dataArray, dataArray2, self.proArray, self.proArray2, self.proQ, self.dataQ,
-            self.frameRate, self.audioBuffer, self.split, self.barsAmt, self.sampleRate, self.curvy, self.interp))
+            self.frameRate, self.audioBuffer, self.plotsList, self.split, self.curvy, self.interp))
 
         # Separate main thread from event loop
         self.mainThread = th.Thread(target=self.mainLoop)
@@ -285,8 +306,6 @@ class ReVidiaMain(QMainWindow):
 
     def mainLoop(self):
         while True:
-            self.updateObjects()
-
             # Gets final results from processing
             self.delay = self.proTime.value
             self.barValues = self.proArray[:self.barsAmt]
@@ -307,6 +326,8 @@ class ReVidiaMain(QMainWindow):
 
             if not self.paintBusy:    # Rare fail safe
                 self.update()
+                self.updateObjects()
+
                 blockTime = time.time()
                 self.blockLock.acquire(timeout=1)
                 if (time.time() - blockTime) >= 1:
@@ -333,8 +354,11 @@ class ReVidiaMain(QMainWindow):
         self.barsAmt = self.size().width() // self.wholeWidth
         if self.barsAmt > self.audioBuffer // 4:
             self.barsAmt = self.audioBuffer // 4
-        if self.barsAmt != oldBarsAmt:
-            self.proQ.put(['barsAmt', self.barsAmt])
+
+        if (self.barsAmt != oldBarsAmt) or (self.oldPoints != self.pointsList):
+            self.updatePlots()
+
+        self.oldPoints = self.pointsList
 
         # Update height slider
         if hasattr(self, 'showHeightSlider'):
@@ -345,6 +369,24 @@ class ReVidiaMain(QMainWindow):
 
         if self.checkRainbow:
             self.setRainbow(1)
+
+    def updatePlots(self):
+        plot = self.sampleRate / self.audioBuffer
+
+        startPoint = self.pointsList[0] / plot
+        startCurve = startPoint * self.pointsList[1]
+        midPoint = self.pointsList[2] / plot
+        midPointPos = int(round(self.barsAmt * self.pointsList[3]))
+        endCurve = midPoint * self.pointsList[4]
+        endPoint = self.pointsList[5] / plot
+
+        startScale = ReVidia_win.quadBezier(startPoint, midPoint, startCurve, midPointPos)
+        endScale = ReVidia_win.quadBezier(midPoint, endPoint, endCurve, self.barsAmt - midPointPos, True)
+        plots = startScale + endScale
+
+        self.plotsList = list(map(int, ReVidia_win.dataPlotter(plots, 1, self.audioBuffer // 2)))
+        if hasattr(self, 'proQ'):
+            self.proQ.put(['plots', self.plotsList])
 
     def setTextPalette(self):
         if not hasattr(self, 'textPalette'):
@@ -441,7 +483,12 @@ class ReVidiaMain(QMainWindow):
         if self.lumen:
             lumReigen = 255 / (viewHeight * (self.lumen / 100))
 
-        painter.setBrush(self.barColor)
+        if not self.gradient:
+            barColor = self.barColor
+        else:
+            barColor = QGradient(self.gradient)
+
+        painter.setBrush(barColor)
 
         if len(self.barValues) == self.barsAmt:
             for y in range(len(self.barValues)):
@@ -461,10 +508,17 @@ class ReVidiaMain(QMainWindow):
                 if ySize < 0: ySize = 0
 
                 if self.lumen:
-                    color = QColor(self.barColor)
+                    color = barColor
                     lumBright = int(ySize * lumReigen)
                     if lumBright > 255: lumBright = 255
-                    color.setAlpha(lumBright)
+                    if not self.gradient:
+                        color.setAlpha(lumBright)
+                    else:
+                        for stop in barColor.stops():
+                            pos = stop[0]
+                            point = stop[1]
+                            point.setAlpha(lumBright)
+                            color.setColorAt(pos, point)
                     painter.setBrush(color)  # Fill of bar color
 
                 if not self.outline:
@@ -478,7 +532,10 @@ class ReVidiaMain(QMainWindow):
             if self.outlineSize:
                 xPos = (self.gapWidth // 2)
 
-                painter.setBrush(self.outlineColor)  # Fill of outline color
+                if self.gradient and self.outline:
+                    painter.setBrush(self.gradient)
+                else:
+                    painter.setBrush(self.outlineColor)  # Fill of outline color
                 for y in range(len(self.barValues)):
                     ySize = ySizeList[y]
                     yPos = yPosList[y]
@@ -505,7 +562,7 @@ class ReVidiaMain(QMainWindow):
         font.setPixelSize(fontSize)
         painter.setFont(font)
 
-        freqList = ReVidia_win.assignFreq(self.audioBuffer, self.sampleRate, self.barsAmt)
+        freqList = ReVidia_win.assignFreq(self.audioBuffer, self.sampleRate, self.plotsList)
 
         ySize = int(fontSize * 1.5)
         xPos = self.gapWidth // 2
@@ -623,6 +680,12 @@ class ReVidiaMain(QMainWindow):
 
         elif firstRun: sys.exit()
 
+    def getScaleDialog(self):
+        self.scaleDialog = ScaleDialog(self)
+        self.scaleDialog.setMinimumSize(150, 100)
+        self.scaleDialog.setGeometry(self.pos().x(), self.pos().y(), self.size().width()//2, self.size().height()//2)
+        self.scaleDialog.show()
+
     def setSplit(self, on):
         if on:
             self.split = 1
@@ -702,6 +765,14 @@ class ReVidiaMain(QMainWindow):
         else:
             self.checkRainbow = 0
             del self.rainbowHue
+
+    def getGradDialog(self):
+        self.gradDialog = GradientDialog(self)
+        self.gradDialog.setMinimumSize(150, 100)
+        posX = self.pos().x() + self.size().width() // 2
+        self.gradDialog.setGeometry(posX, self.pos().y(), self.size().width() // 2,
+                                     self.size().height() // 2)
+        self.gradDialog.show()
 
     def showBarSliders(self, on):
         if on:
@@ -931,6 +1002,438 @@ class ReVidiaMain(QMainWindow):
             self.T1.terminate()
         except RuntimeError:
             print('Some processes won\'t close properly, closing anyway.')
+
+
+class ScaleDialog(QMainWindow):
+    def __init__(self, main):
+        super(ScaleDialog, self).__init__()
+        self.main = main
+        self.setWindowTitle('Scale')
+        self.border = 10
+        self.pRad = 5   # Point radius
+        self.holdStartPoint = 0
+        self.holdMidPoint = 0
+        self.holdEndPoint = 0
+        self.scaleMode = 0
+
+        self.intiUI()
+
+    def intiUI(self):
+        mainBar = self.menuBar()
+        mainBar.heightForWidth(20)
+
+        self.scaleModeCheck = QAction('Bezier', self)
+        self.scaleModeCheck.setCheckable(True)
+        self.scaleModeCheck.triggered.connect(self.setScaleMode)
+
+        mainBar.addAction(self.scaleModeCheck)
+
+        self.startPointSpinBox = QSpinBox()
+        self.startPointSpinBox.setRange(0, int(self.main.sampleRate // 2))
+        self.startPointSpinBox.setSuffix(' HZ')
+        self.startPointSpinBox.setMaximumWidth(90)
+        self.startPointSpinBox.setMaximumHeight(20)
+        self.startPointSpinBox.valueChanged.connect(self.setStartPoint)
+        self.startPointSpinBox.setValue(self.main.startPoint)
+        self.startPointSpinBox.setKeyboardTracking(False)
+        self.startPointSpinBox.setFocusPolicy(Qt.ClickFocus)
+        startPointDock = QDockWidget(self)
+        startPointDock.move(55, -20)
+        startPointDock.setFeatures(QDockWidget.NoDockWidgetFeatures)
+        startPointDock.setWidget(self.startPointSpinBox)
+        startPointDock.show()
+
+        self.midPointSpinBox = QSpinBox()
+        self.midPointSpinBox.setRange(0, int(self.main.sampleRate // 2))
+        self.midPointSpinBox.setSuffix(' HZ')
+        self.midPointSpinBox.setMaximumWidth(90)
+        self.midPointSpinBox.setMaximumHeight(20)
+        self.midPointSpinBox.valueChanged.connect(self.setMidPoint)
+        self.midPointSpinBox.setValue(self.main.midPoint)
+        self.midPointSpinBox.setKeyboardTracking(False)
+        self.midPointSpinBox.setFocusPolicy(Qt.ClickFocus)
+        midPointDock = QDockWidget(self)
+        midPointDock.move(160, -20)
+        midPointDock.setFeatures(QDockWidget.NoDockWidgetFeatures)
+        midPointDock.setWidget(self.midPointSpinBox)
+        midPointDock.show()
+
+        self.endPointSpinBox = QSpinBox()
+        self.endPointSpinBox.setRange(0, int(self.main.sampleRate // 2))
+        self.endPointSpinBox.setSuffix(' HZ')
+        self.endPointSpinBox.setMaximumWidth(90)
+        self.endPointSpinBox.setMaximumHeight(20)
+        self.endPointSpinBox.valueChanged.connect(self.setEndPoint)
+        self.endPointSpinBox.setValue(self.main.endPoint)
+        self.endPointSpinBox.setKeyboardTracking(False)
+        self.endPointSpinBox.setFocusPolicy(Qt.ClickFocus)
+        endPointDock = QDockWidget(self)
+        endPointDock.move(265, -20)
+        endPointDock.setFeatures(QDockWidget.NoDockWidgetFeatures)
+        endPointDock.setWidget(self.endPointSpinBox)
+        endPointDock.show()
+
+    def setScaleMode(self, mode):
+        if mode == 0:
+            self.scaleMode = 0
+            self.scaleModeCheck.setText('Bezier')
+        else:
+            self.scaleMode = 1
+            self.scaleModeCheck.setText('Real')
+
+        self.resizeEvent(0)
+        self.update()
+
+    def setStartPoint(self, value):
+        self.main.startPoint = value
+        self.updatePoints()
+
+    def setMidPoint(self, value):
+        self.main.midPoint = value
+        self.updatePoints()
+
+    def setEndPoint(self, value):
+        self.main.endPoint = value
+        self.updatePoints()
+
+    def updatePoints(self):
+        self.main.pointsList = [self.main.startPoint, self.main.startCurve, self.main.midPoint,
+                                self.main.midPointPos, self.main.endCurve, self.main.endPoint]
+        self.update()
+
+    def resizeEvent(self, event):
+        xSize = self.size().width() - self.border * 2
+        ySize = self.size().height() - self.border * 2 - 25
+        self.boundry = QRect(self.border, self.border + 25, xSize, ySize)
+
+        if self.scaleMode == 1:
+            steps = (self.main.sampleRate / 2) / (ySize-1)
+            self.freqScale = ReVidia_win.realScale(0, (self.main.sampleRate // 2), steps)
+        else:
+            self.freqScale = ReVidia_win.quadBezier(0, (self.main.sampleRate // 2), 0, (ySize-1), True)
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(self.main.backgroundColor)
+        painter.drawRect(0, 0, self.size().width(), self.size().height())
+
+        painter.setRenderHints(QPainter.Antialiasing)
+        linePen = QPen()
+        linePen.setColor(self.main.barColor)
+        linePen.setWidth(3)
+        linePen.setCapStyle(Qt.RoundCap)
+        painter.setPen(linePen)
+
+        painter.drawRect(self.boundry)
+
+        widthScale = self.boundry.width() / self.main.barsAmt
+        xPos1 = self.border - widthScale
+        xPos2 = self.border
+
+        freqList = (ReVidia_win.assignFreq(self.main.audioBuffer, self.main.sampleRate, self.main.plotsList, True))
+
+        midPoint = int(round(self.main.barsAmt * self.main.midPointPos))
+        for i in range(len(freqList)):
+            freq = freqList[i]
+
+            for n in range(self.boundry.height()):
+                if freq - self.freqScale[n] <= 0:
+                    index = self.freqScale.index(min(self.freqScale[n], self.freqScale[n - 1], key=lambda x: abs(x - freq)))
+                    yPos2 = self.size().height() - index - self.border
+                    break
+            if i > 0:
+                xPos1 += widthScale
+                xPos2 += widthScale
+                painter.drawLine(int(round(xPos1)), yPos1, int(round(xPos2)), yPos2)
+            else:
+                startYPos = yPos2
+            if i == midPoint:
+                midXPos = xPos2
+                midYPos = yPos2
+
+            yPos1 = yPos2
+
+        xPos = self.border
+        yPos = startYPos
+        self.startCenterPoint = QPoint(xPos, yPos)
+        painter.drawEllipse(self.startCenterPoint, self.pRad, self.pRad)
+
+        xTextPos = self.startCenterPoint.x() + self.pRad + 1
+        yTextPos = self.startCenterPoint.y() - self.pRad
+        painter.drawText(xTextPos, yTextPos, str(round(self.main.startPoint)) + ' HZ')
+
+        xPos = int(midXPos)
+        yPos = midYPos
+        self.midCenterPoint = QPoint(xPos, yPos)
+        painter.drawEllipse(self.midCenterPoint, self.pRad, self.pRad)
+
+        xTextPos = self.midCenterPoint.x() - 30
+        yTextPos = self.midCenterPoint.y() - (self.pRad * 2)
+        painter.drawText(xTextPos, yTextPos, str(round(self.main.midPoint)) + ' HZ')
+
+        xPos = (self.size().width() - self.border)
+        yPos = yPos2
+        self.endCenterPoint = QPoint(xPos, yPos)
+
+        painter.drawEllipse(self.endCenterPoint, self.pRad, self.pRad)
+
+        digits = 0
+        number = self.main.endPoint
+        if number == 0: digits = 1
+        while number > 0:
+            number //= 10
+            digits += 1
+        xTextPos = self.endCenterPoint.x() - (digits * 9) - (self.pRad * 4)
+        yTextPos = self.endCenterPoint.y() - self.pRad
+
+        painter.drawText(xTextPos, yTextPos, str(round(self.main.endPoint)) + ' HZ')
+
+        painter.end()
+
+    def mousePressEvent(self, event):
+        self.holding = 1
+        field = self.pRad * 2
+        if (event.x() < self.startCenterPoint.x() + field) and (event.x() > self.startCenterPoint.x() - field) \
+                and (event.y() < self.startCenterPoint.y() + field) and (event.y() > self.startCenterPoint.y() - field):
+            self.holdStartPoint = 1
+
+        if (event.x() < self.midCenterPoint.x() + field) and (event.x() > self.midCenterPoint.x() - field) \
+                and (event.y() < self.midCenterPoint.y() + field) and (event.y() > self.midCenterPoint.y() - field):
+            self.holdMidPoint = 1
+
+        if (event.x() < self.endCenterPoint.x() + field) and (event.x() > self.endCenterPoint.x() - field) \
+                and (event.y() < self.endCenterPoint.y() + field) and (event.y() > self.endCenterPoint.y() - field):
+            self.holdEndPoint = 1
+
+    def mouseMoveEvent(self, event):
+        if self.holding:
+            if self.holdStartPoint:
+                index = self.size().height() - event.y() - self.border
+                if index > self.boundry.height()-1: index = self.boundry.height()-1
+                if index < 0: index = 0
+
+                self.main.startPoint = int(self.freqScale[index])
+                self.startPointSpinBox.setValue(self.main.startPoint)
+
+            if self.holdMidPoint:
+                midX = (event.x() - self.border) / self.boundry.width()
+                if midX > 0.9: midX = 0.9
+                if midX < 0.1: midX = 0.1
+
+                self.main.midPointPos = midX
+
+                index = self.size().height() - event.y() - self.border
+                if index > self.boundry.height()-1: index = self.boundry.height()-1
+                if index < 0: index = 0
+
+                self.main.midPoint = int(self.freqScale[index])
+                self.midPointSpinBox.setValue(self.main.midPoint)
+
+            if self.holdEndPoint:
+                index = self.size().height() - event.y() - self.border
+                if index > self.boundry.height()-1: index = self.boundry.height()-1
+                if index < 0: index = 0
+
+                self.main.endPoint = int(self.freqScale[index])
+                self.endPointSpinBox.setValue(self.main.endPoint)
+
+            self.main.pointsList = [self.main.startPoint, self.main.startCurve, self.main.midPoint,
+                                    self.main.midPointPos, self.main.endCurve, self.main.endPoint]
+            self.update()
+
+    def wheelEvent(self, event):
+        mouseDir = event.angleDelta().y()
+        if self.holdStartPoint:
+            if mouseDir > 0:
+                if self.main.startCurve < 3:
+                    self.main.startCurve += 0.1
+            elif mouseDir < 0:
+                if self.main.startCurve > -2:
+                    self.main.startCurve -= 0.1
+        if self.holdMidPoint:
+            if mouseDir > 0:
+                if self.main.endCurve < 3:
+                    self.main.endCurve += 0.1
+            elif mouseDir < 0:
+                if self.main.endCurve > -2:
+                    self.main.endCurve -= 0.1
+
+        self.main.pointsList = [self.main.startPoint, self.main.startCurve, self.main.midPoint,
+                                self.main.midPointPos, self.main.endCurve, self.main.endPoint]
+        self.update()
+
+    def mouseReleaseEvent(self, event):
+        self.holding = 0
+        self.holdStartPoint = 0
+        self.holdMidPoint = 0
+        self.holdEndPoint = 0
+
+
+class GradientDialog(QMainWindow):
+    def __init__(self, main):
+        super(GradientDialog, self).__init__()
+        self.main = main
+        self.setWindowTitle('Gradient')
+        self.disabled = 0
+
+        self.intiUI()
+
+        if self.main.gradient:
+            self.pointsList = self.main.gradient.stops()
+            if self.main.gradient.start().y() > 0:
+                self.dirMode = 0
+                self.dirModeCheck.setText('Vertical')
+            else:
+                self.dirMode = 1
+                self.dirModeCheck.setText('Horizontal')
+
+            if self.main.gradient.coordinateMode() == 1:
+                self.fillMode = 0
+                self.fillModeCheck.setText('Whole')
+            else:
+                self.fillMode = 1
+                self.fillModeCheck.setText('Per-Bar')
+
+        else:
+            self.pointsList = []
+            self.fillMode = 0
+            self.dirMode = 0
+
+        self.setGradient()
+
+    def intiUI(self):
+        mainBar = self.menuBar()
+        mainBar.heightForWidth(20)
+
+        self.dirModeCheck = QAction('Vertical', self)
+        self.dirModeCheck.setCheckable(True)
+        self.dirModeCheck.triggered.connect(self.setDirMode)
+
+        self.fillModeCheck = QAction('Whole', self)
+        self.fillModeCheck.setCheckable(True)
+        self.fillModeCheck.triggered.connect(self.setFillMode)
+
+        clear = QAction('Clear', self)
+        clear.triggered.connect(self.runClear)
+
+        self.enabled = QAction('Enabled', self)
+        self.enabled.setCheckable(True)
+        self.enabled.triggered.connect(self.setEnabled)
+        self.enabled.setChecked(True)
+
+        mainBar.addAction(self.dirModeCheck)
+        mainBar.addAction(self.fillModeCheck)
+        mainBar.addAction(clear)
+        mainBar.addAction(self.enabled)
+
+    def setDirMode(self, mode):
+        if mode == 0:
+            self.dirMode = 0
+            self.dirModeCheck.setText('Vertical')
+        else:
+            self.dirMode = 1
+            self.dirModeCheck.setText('Horizontal')
+
+        self.setGradient()
+
+    def setFillMode(self, mode):
+        if mode == 0:
+            self.fillMode = 0
+            self.fillModeCheck.setText('Whole')
+        else:
+            self.fillMode = 1
+            self.fillModeCheck.setText('Per-Bar')
+
+        self.setGradient()
+
+    def runClear(self):
+        self.pointsList = []
+        self.setGradient()
+
+    def setEnabled(self, on):
+        if on:
+            self.enabled.setText('Enabled')
+            self.disabled = 0
+            self.setGradient()
+        else:
+            self.enabled.setText('Disabled')
+            self.main.gradient = 0
+            self.disabled = 1
+
+    def setGradient(self):
+        gradient = QLinearGradient()
+        if self.fillMode == 0:
+            gradient.setCoordinateMode(QGradient.StretchToDeviceMode)
+        else:
+            gradient.setCoordinateMode(QGradient.ObjectBoundingMode)
+
+        for point in self.pointsList:
+            gradient.setColorAt(point[0], point[1])
+
+        if self.dirMode == 0:
+            start = 0, 1
+            end = 0, 0
+        else:
+            start = 0, 0
+            end = 1, 0
+        gradient.setStart(start[0], start[1])
+        gradient.setFinalStop(end[0], end[1])
+
+        if not self.disabled:
+            self.main.gradient = gradient
+            self.gradient = gradient
+
+        self.update()
+
+    def resizeEvent(self, event):
+        self.GW = self.size().width()   # Graphics Width
+        self.GH = self.size().height() - 20     # Graphics Height
+
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        yPos = 20
+
+        gradient = QLinearGradient(self.gradient)
+        gradient.setCoordinateMode(QGradient.ObjectBoundingMode)
+        painter.setBrush(gradient)
+        painter.setPen(Qt.NoPen)
+        painter.drawRect(0, yPos, self.GW, self.GH + yPos)
+
+        painter.setPen(QPen(QColor(0, 0, 0), 3, Qt.DotLine))
+
+        for point in self.pointsList:
+            if self.dirMode == 0:
+                pos = int((self.GH - (point[0] * self.GH)) + yPos)
+                painter.drawLine(0, pos, self.GW, pos)
+            else:
+                pos = int(point[0] * self.GW)
+                painter.drawLine(pos, yPos, pos, self.GH+20)
+
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == 1:
+            if self.dirMode == 0:
+                point = 1 - ((event.y() - 20) / self.GH)
+            else:
+                point = event.x() / self.GW
+
+            color = QColorDialog.getColor(QColor(255,255,255),None,None,QColorDialog.ShowAlphaChannel)
+
+            self.pointsList.append((point, color))
+            self.setGradient()
+
+    def mousePressEvent(self, event):
+        if event.button() == 2:
+            if self.dirMode == 0:
+                posF = 1 - ((event.y() - 20) / self.GH)
+            else:
+                posF = event.x() / self.GW
+
+            for point in self.pointsList:
+                if (point[0] - 0.01 < posF) and (point[0] + 0.01 > posF):
+                    self.pointsList.remove(point)
+
+            self.setGradient()
 
 
 # Starts program

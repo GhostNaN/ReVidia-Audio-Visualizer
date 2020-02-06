@@ -71,10 +71,11 @@ def collectData(dataTime, dataArr, dataArr2, dataQ, device, buffer, split):
 
 # Processes data into Y values of bars
 def processData(syncLock, dataTime, proTime, dataArr, dataArr2, proArr, proArr2, proQ, dataQ,
-                frameRate, buffer, split, barsAmt, sampleRate, curvy, interp):
+                frameRate, buffer, plotsList, split, curvy, interp):
 
     killTimeout = 3  # How many seconds to wait for main thread
     frameTime = 1 / frameRate
+    width = len(plotsList) - 1
     barValues = []
     splitBarValues = []
     oldList = []
@@ -90,10 +91,10 @@ def processData(syncLock, dataTime, proTime, dataArr, dataArr2, proArr, proArr2,
 
         # Transforms audio data
         oldBarValues = barValues
-        barValues = transformData(dataList, barsAmt, sampleRate, curvy)
+        barValues = transformData(dataList, plotsList, curvy)
         if split:
             oldSplitValues = splitBarValues
-            splitBarValues = transformData(rightDataList, barsAmt, sampleRate, curvy)
+            splitBarValues = transformData(rightDataList, plotsList, curvy)
 
         # Smooth audio data using past averages
         if interp:
@@ -113,9 +114,9 @@ def processData(syncLock, dataTime, proTime, dataArr, dataArr2, proArr, proArr2,
 
         # Send out data
         proTime.value = delayTime
-        proArr[:barsAmt] = barValues
+        proArr[:width] = barValues
         if split:
-            proArr2[:barsAmt] = splitBarValues
+            proArr2[:width] = splitBarValues
 
         workTime = time.time() - frameTimer
 
@@ -132,12 +133,13 @@ def processData(syncLock, dataTime, proTime, dataArr, dataArr2, proArr, proArr2,
                 buffer = request[1]
             elif 'split' in request:
                 split = request[1]
-            elif 'barsAmt' in request:
-                barsAmt = request[1]
             elif 'curvy' in request:
                 curvy = request[1]
             elif 'interp' in request:
                 interp = request[1]
+            elif 'plots' in request:
+                plotsList = request[1]
+                width = len(plotsList) - 1
 
         killTime = time.time()
         syncLock.acquire(timeout=killTimeout)
@@ -157,33 +159,15 @@ def processData(syncLock, dataTime, proTime, dataArr, dataArr2, proArr, proArr2,
 
 
 # Assigns frequencies locations based on plots
-def assignFreq(buffer, samples, width):
-    plot = samples / buffer
+def assignFreq(buffer, samples, plotsList, maxMode=False):
+    freq = samples / buffer
 
-    freqList = [0]
-    noteNum = plot
-    numFloat = plot
-    point1 = 1000 / plot
-    point1Pos = 0.66
-    endPoint = 12000
+    freqs = list(map(lambda plot: plot * freq, plotsList))
 
-    startGrow = int(width * point1Pos)
-    if startGrow > 1:
-        expoGrow = point1 ** (1 / (startGrow - 1))
-
-        for f in range(width - 1):
-
-            oldFloat = noteNum
-            numFloat *= expoGrow
-            noteNum = numFloat
-
-            if numFloat - oldFloat <= plot:
-                noteNum = oldFloat + plot
-
-            if f == startGrow - 2:
-                expoGrow = (endPoint / noteNum) ** (1 / (width - startGrow))  # RATE=(END/START)**(1/STEPS)
-
-            freqList.append(oldFloat)
+    if not maxMode:
+        freqList = freqs[:-1]
+    else:
+        freqList = freqs
 
     return freqList
 
@@ -259,38 +243,69 @@ def savitzkyGolay(y, window_size, order, deriv=0, rate=1):
     return np.convolve( m[::-1], y, mode='valid')
 
 
-# Processes the audio data into proper
-def transformData(dataList, width, samples, curvy=False):
+def realScale(start, stop, step):
+    floats = list(np.arange(start, stop+step, step))
+    ints = list(map(lambda float: int(round(float)), floats))
 
+    return ints
+
+
+def quadBezier(p0, p2, c, n, extra=False):
+    x = []
+    samples = n
+    if extra: samples = n + 1
+    for i in range(samples):
+        t = i / n
+        x.append((1 - t) * ((1-t) * p0 + t * c) + t * ((1-t) * c + t * p2))
+
+    return x
+
+
+def dataPlotter(values, step, limit):
+    maxNum = int(values[0])
+    plottedList = [maxNum]
+    for i in range(1, len(values)):
+        minNum = maxNum
+        maxNum = step * round(values[i]/step)
+
+        if values[i - 1] <= values[i]:
+            if maxNum - minNum <= 0:
+                maxNum = minNum + step
+        else:
+            if minNum - maxNum <= 0:
+                maxNum = minNum - step
+
+        if maxNum > max(values):
+            maxNum = round(max(values) - step)
+        if maxNum < 0:
+            maxNum = step
+        if maxNum > limit:
+            maxNum = limit - step
+        if minNum == maxNum:
+            maxNum += step
+
+        plottedList.append(maxNum)
+
+    return plottedList
+
+
+# Processes the audio data into proper
+def transformData(dataList, plotsList, curvy=False):
     buffer = len(dataList)
-    plot = samples / buffer
-    if width < 2: width = 2  # Prevents crash when window gets too small
 
     # The heart of ReVidia, the fourier transform.
     transform = np.fft.rfft(dataList, buffer)
     absTransform = np.abs(transform)     # Each plot is rate/buffer = frequency
 
-    point1 = 1000 / plot    # Points in the graph scales to
-    point1Pos = 0.66
-    endPoint = 12000 // plot
-
-    startGrow = int(width * point1Pos)
-    expoGrow = point1**(1 / startGrow)     # RATE=(END/1)**(1/STEPS)
-    xBarMaxFloat = 1
-    xBarMax = 0
-
     barValues = []
-    for z in range(width):                       # Exponentially scale
-        xBarMin = xBarMax
-        xBarMaxFloat *= expoGrow
-        xBarMax = int(xBarMaxFloat)
-        if xBarMax - xBarMin <= 0:
-            xBarMax = xBarMin + 1
-        if z == startGrow-1:
-            xBarMaxFloat = xBarMax
-            expoGrow = (endPoint / xBarMaxFloat) ** (1 / (width - startGrow))  # RATE=(END/START)**(1/STEPS)
+    for z in range(len(plotsList)-1):
+        minNum = plotsList[z]
+        maxNum = plotsList[z+1]
 
-        barValues.append(int(max(absTransform[xBarMin:xBarMax])))
+        if maxNum > minNum:
+            barValues.append(int(max(absTransform[minNum:maxNum])))
+        else:
+            barValues.append(int(max(absTransform[maxNum:minNum])))
 
     if curvy:
         curveArray = np.array(barValues)
