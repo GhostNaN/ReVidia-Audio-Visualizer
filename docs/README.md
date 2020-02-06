@@ -31,8 +31,6 @@ If you are using **Windows** I HIGHLY recommend installing VB-CABLE:
   
 ## Future Ideas:
 #### In order of importance:
-- Add a option to scale the frequencies
-- Include a gradient setting
 - Make a profile/config feature
 - Implement a loop back to speakers on Linux/Windows
 - General optimizing
