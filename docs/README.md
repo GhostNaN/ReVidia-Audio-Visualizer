@@ -5,7 +5,7 @@
 - Linux: master branch
 - Windows: win-port branch 
 ## Requirements
-#### Linux: Python 3.7+ and Portaudio
+#### Linux: Python 3.7+ and Portaudio | Optional: JACK(Along with pulseaudio-jack)
 
 - Most distros should have Python already installed
 - If you don't have PortAudio, download and compile it from:
@@ -33,23 +33,25 @@ install.bat
 #### Note: Run the installer again if you move the file at all
 
 ## Important Notes:
-#### This program ONLY accepts input(mics) audio streams for now
+#### This program ONLY accepts input audio streams
 
-If you are on **Linux** and want to use your speaker's audio I recommend using jack like in this guide:
+If you are on **Linux**, ReVidia will try to use JACK to retrieve your output audio:
+- Just make sure you have jack, pulseaudio-jack, alsa and pulseaudio(with "pactl")
+
+If you use JACK normally like below, then just pick the JACK input.
 - https://forum.manjaro.org/t/how-to-replace-pulseaudio-with-jack-jack-and-pulseaudio-together-as-friend/2086
-- Or something like this: https://unix.stackexchange.com/questions/82259/how-to-pipe-audio-output-to-mic-input#
+
   
 If you are using **Windows** I HIGHLY recommend installing VB-CABLE:
 - https://www.vb-audio.com/Cable/index.htm#DownloadCable  
-- Not only will it allow you to use your speaker audio easily
-- But depending on your system, it not might even run properly without the APIs it provides
-- To use VB-CABLE follow the guide in the "WindowsReadme.txt"
+
+This will allow you to use your speaker's audio and will have a better chance of using a device:
+- To use VB-CABLE follow the "Setting up VB-CABLE in 5 steps:" in the "WindowsReadme.txt"
   
 ## Future Ideas:
 #### In order of importance:
-- Make a profile/config feature
-- Implement a loop back to speakers on Linux/Windows
 - General optimizing
+- Mabye implement a loop back to speakers on Windows
 - Fix how transparency is done on Windows
 - Overhaul the old Linux terminal version
 
