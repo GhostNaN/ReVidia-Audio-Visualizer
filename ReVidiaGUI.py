@@ -367,15 +367,6 @@ class ReVidiaMain(QMainWindow):
             # print(1 / (time.time() - self.loopTime))
             self.loopTime = time.time()
 
-        # Update the amount of bars on screen
-        oldBarsAmt = self.barsAmt
-        self.barsAmt = self.size().width() // self.wholeWidth
-        if self.barsAmt > self.audioBuffer // 4:
-            self.barsAmt = self.audioBuffer // 4
-
-        if (self.barsAmt != oldBarsAmt):
-            self.updatePlots()
-
         # Update height slider
         if hasattr(self, 'showHeightSlider'):
             if self.showHeightSlider.isSliderDown():
@@ -994,6 +985,7 @@ class ReVidiaMain(QMainWindow):
     def setBarSize(self, value):
         self.barWidth = value
         self.wholeWidth = self.barWidth + self.gapWidth
+        self.barsAmt = self.size().width() // self.wholeWidth
         if self.outlineSize > self.barWidth // 2:
             self.setOutlineSize(self.outlineSize)
 
@@ -1002,6 +994,7 @@ class ReVidiaMain(QMainWindow):
     def setGapSize(self, value):
         self.gapWidth = value
         self.wholeWidth = self.barWidth + self.gapWidth
+        self.barsAmt = self.size().width() // self.wholeWidth
 
         self.showGapText.setText('Gap Width ' + str(self.gapWidth))
 
@@ -1147,6 +1140,11 @@ class ReVidiaMain(QMainWindow):
 
         if hasattr(self, 'showHeightText'):
             self.showHeightText.setText('Height \n' + str(round(self.barHeight * 1000, 2)))
+
+    def resizeEvent(self, event):
+        if hasattr(self, 'barsAmt'):
+            self.barsAmt = self.size().width() // self.wholeWidth
+            self.updatePlots()
 
     # Makes sure the processes are not running in the background after closing
     def closeEvent(self, event):
