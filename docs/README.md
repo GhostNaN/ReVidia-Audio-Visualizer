@@ -22,18 +22,18 @@ install.bat
 #### Note: Run the installer again if you move the file at all
 
 ## Important Notes:
-#### This program ONLY accepts input(mics) audio streams for now 
+#### This program ONLY accepts input(mics) audio streams for now
+
 If you are using **Windows** I HIGHLY recommend installing VB-CABLE:
 - https://www.vb-audio.com/Cable/index.htm#DownloadCable  
-- Not only will it allow you to use your speaker's audio easily
-- But depending on your system, it not might even run properly without the APIs it provides
-- To use VB-CABLE follow the guide in the "WindowsReadme.txt"
+
+This will allow you to use your speaker's audio and will have a better chance of using a device:
+- To use VB-CABLE follow the "Setting up VB-CABLE in 5 steps:" in the "WindowsReadme.txt"
   
 ## Future Ideas:
 #### In order of importance:
-- Make a profile/config feature
-- Implement a loop back to speakers on Linux/Windows
 - General optimizing
+- Mabye implement a loop back to speakers on Windows
 - Fix how transparency is done on Windows
 - Overhaul the old Linux terminal version
 
