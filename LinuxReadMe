@@ -4,6 +4,7 @@ Installation
 ============================
 
 ReVidia on Linux REQUIRES Python 3.7+ and Portaudio
+Optional: JACK(Along with pulseaudio-jack)
 
 If you don't have PortAudio download and compile it from:
 http://www.portaudio.com/download.html
@@ -23,12 +24,9 @@ Usage/About
 
 General:
 
-- This software ONLY accepts input(mics) audio streams for now.
-
-- To use your speaker's audio I recommend using jack like in this guide:
+- This software ONLY accepts JACK(Pulseaudio(using "pactl") and with a ALSA device(hw:x,y)) to use your speaker audio.
+  If you use JACK normally like below, then just pick the JACK input.
   https://forum.manjaro.org/t/how-to-replace-pulseaudio-with-jack-jack-and-pulseaudio-together-as-friend/2086
-  
-  Or something like this: https://unix.stackexchange.com/questions/82259/how-to-pipe-audio-output-to-mic-input#
   
 - The FPS combo box is the global timer. So if you set it higher, everything will run faster and vice versa.
 
@@ -40,12 +38,12 @@ Settings:
 For best performance leave as default, shrink the program size and lower the FPS as needed.
 Use Stats|Deadline to gauge performance.
 
-
 On a scale from [0] being negligible/none to [5] being the worst performance cost of settings:
 
+Main|Profiles - Save, Load and Delete profiles that save all your settings [0]
 Main|Split Audio - Splits the audio into left(top half) and right(bottom half) channels [4]
 Main|Scale - Popup to adjust scaling curves using dragging and scrolling of points [0] 
-Main|Curviness - Curves/Smooths the bars with a Savitzky Golay Filter [1] 
+Main|Curviness - Curves/Smooths the bars with a Savitzky Golay Filter & Moving Avg. [1] 
 Main|Interpolation - By averaging old data with new data it makes the bars appear less noisy [1]
 Main|Audio Buffer - Audio frames in the buffer. The higher the number the higher the accuracy, but old data lingers [3]
 
@@ -70,6 +68,7 @@ Stats|Notes - Places notes to the closest given frequency plot [4]
   Having (Out)line Width more than 0/enabled will decrease performance.
   And increasing the height to allow the bars to take up more screen space will decrease performance.
 
+  
 Shortcuts:
 
 Scroll - Change Bar height on the fly
@@ -86,6 +85,3 @@ and change the alpha channel to 0. Then press SHIFT twice for the borders to go 
     - Using this effect on top of a non-Fullscreen YouTube videos is pretty fun.
 
 - Lower the Main|Interpolation and Main|Audio Buffer for more responsiveness, this helps when you have a low FPS set.
-
-- For a Monstercat lite-edition style, set Main|Curviness to Sharp, Main|Audio Buffer to 8192, scale window to have 64 bars(Stats|Bars)
-  and keep the rest at default. This WILL NOT look the exact same, that was never my goal to begin with.
