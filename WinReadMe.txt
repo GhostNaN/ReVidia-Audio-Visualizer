@@ -20,17 +20,18 @@ Then simply use the desktop shortcut to enjoy!
 I also HIGHLY recommend installing VB-CABLE: 
 https://www.vb-audio.com/Cable/index.htm#DownloadCable
 
-As this software ONLY accepts input(mics) audio streams for now.
+As this software ONLY accepts input(mics) audio streams on Windows for now.
 
-Without it you might not be able to select speaker's audio 
+Without it you might not be able to select your speaker's audio 
 or even start the program at ALL because it also uses
 Windows audio APIs that meld better with PortAudio.
 
-Using VB-CABLE:
-After installing VB-CABLE go into the sound control panel 
-and set "CABLE Input" as your default playback device. 
-Then in "CABLE Output" Properties check the box
-"Listen to this device" to your speakers you normally use. 
+Setting up VB-CABLE in 5 steps:
+1. After installing VB-CABLE go into the sound control panel or by running "control.exe mmsys.cpl" 
+2. Set "CABLE Input" as your default playback device. 
+3. Switch to the "Recording" tab and go in "CABLE Output" Properties.
+4. Under the tab "Listen" check the box "Listen to this device" 
+5. Finally in the "Playback through this device:" select the speakers you normally use. 
 
 Then, if you like to use your speaker's audio
 just select any "CABLE Output" device in ReVidia.
@@ -70,9 +71,10 @@ Use Stats|Deadline to gauge performance.
 
 On a scale from [0] being negligible/none to [5] being the worst performance cost of settings:
 
+Main|Profiles - Save, Load and Delete profiles that save all your settings [0]
 Main|Split Audio - Splits the audio into left(top half) and right(bottom half) channels [4]
 Main|Scale - Popup to adjust scaling curves using dragging and scrolling of points [0] 
-Main|Curviness - Curves/Smooths the bars with a Savitzky Golay Filter [1] 
+Main|Curviness - Curves/Smooths the bars with a Savitzky Golay Filter & Moving Avg. [1] 
 Main|Interpolation - By averaging old data with new data it makes the bars appear less noisy [1]
 Main|Audio Buffer - Audio frames in the buffer. The higher the number the higher the accuracy, but old data lingers [3]
 
@@ -97,6 +99,7 @@ Stats|Notes - Places notes to the closest given frequency plot [4]
   Having (Out)line Width more than 0/enabled will decrease performance.
   And increasing the height to allow the bars to take up more screen space will decrease performance.
 
+  
 Shortcuts:
 
 Scroll - Change Bar height on the fly
@@ -109,6 +112,3 @@ Tips:
 - Due to timings never being perfect, setting a fps slightly above your refresh rate is a good idea.
 
 - Lower the Main|Interpolation and Main|Audio Buffer for more responsiveness, this helps when you have a low FPS set.
-
-- For a Monstercat lite-edition style, set Main|Curviness to Sharp, Main|Audio Buffer to 8192, scale window to have 64 bars(Stats|Bars)
-  and keep the rest at default. This WILL NOT look the exact same, that was never my goal to begin with.
