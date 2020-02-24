@@ -3,24 +3,34 @@
 import pyaudio
 import struct
 import numpy as np
-from math import factorial
 import time
 import sys
 
 
 # Displays device ID options
-def deviceNames(q):
+def deviceNames(q, output=True):
+    import re
     p = pyaudio.PyAudio()
-    deviceList, idList, sampleList = [], [], []
+    outList, inputList, hwIDList, idList, samplesOut, sampleIn = [], [], [], [], [], []
     numDevices = p.get_device_count()
-    for ID in range(numDevices):
-        if (p.get_device_info_by_index(ID).get('maxInputChannels')) > 0:
-            API = p.get_host_api_info_by_index(p.get_device_info_by_index(ID).get('hostApi')).get('name')
-            deviceList.append(p.get_device_info_by_index(ID).get('name') + ' - ' + str(API))
-            idList.append(ID)
-            sampleList.append(p.get_device_info_by_index(ID).get('defaultSampleRate'))
 
-    deviceList = [deviceList, idList, sampleList]
+    for ID in range(numDevices):
+        API = p.get_host_api_info_by_index(p.get_device_info_by_index(ID).get('hostApi')).get('name')
+        name = p.get_device_info_by_index(ID).get('name')
+
+        if output:
+            if (p.get_device_info_by_index(ID).get('maxOutputChannels')) > 0:
+                if re.search(r'(hw:\d+,\d)+', name):
+                    outList.append('Output: ' + name + ' - ' + str(API))
+                    hwIDList.append(re.findall(r'(hw:\d+,\d)+', name)[0])
+                    samplesOut.append(0)
+
+        if (p.get_device_info_by_index(ID).get('maxInputChannels')) > 0:
+            inputList.append('Input: ' + name + ' - ' + str(API))
+            idList.append(ID)
+            sampleIn.append(p.get_device_info_by_index(ID).get('defaultSampleRate'))
+
+    deviceList = [outList + inputList, hwIDList + idList, samplesOut + sampleIn]
     p.terminate()
     q.put(deviceList)
 
@@ -220,6 +230,7 @@ def interpData(barValues, oldList):
 
 # Savitzky Golay Filter straight from the SciPy Cookbook
 def savitzkyGolay(y, window_size, order, deriv=0, rate=1):
+    from math import factorial
     try:
         window_size = np.abs(np.int(window_size))
         order = np.abs(np.int(order))
@@ -312,5 +323,13 @@ def transformData(dataList, plotsList, curvy=False):
         p = curvy[1]
         filtered = savitzkyGolay(curveArray, w, p)  # data, window size, polynomial order
         barValues = list(map(int, filtered))
+
+        # Apply a basic moving avg on top to blend data
+        movingAvg = []
+        movingAvg.append((barValues[0] + barValues[1]) // 2)
+        movingAvg.extend(map(lambda back, mid, front: (back + mid + front) // 3, barValues[0:], barValues[1:], barValues[2:]))
+        movingAvg.append((barValues[-2] + barValues[-1]) // 2)
+
+        barValues = movingAvg
 
     return barValues
