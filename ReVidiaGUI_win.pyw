@@ -896,6 +896,7 @@ class ReVidiaMain(QMainWindow):
         self.barWidth = value
         self.wholeWidth = self.barWidth + self.gapWidth
         self.barsAmt = self.size().width() // self.wholeWidth
+        self.updatePlots()
         if self.outlineSize > self.barWidth // 2:
             self.setOutlineSize(self.outlineSize)
 
@@ -905,6 +906,7 @@ class ReVidiaMain(QMainWindow):
         self.gapWidth = value
         self.wholeWidth = self.barWidth + self.gapWidth
         self.barsAmt = self.size().width() // self.wholeWidth
+        self.updatePlots()
 
         self.showGapText.setText('Gap Width ' + str(self.gapWidth))
 
