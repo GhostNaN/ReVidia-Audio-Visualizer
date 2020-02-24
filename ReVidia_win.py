@@ -3,7 +3,6 @@
 import pyaudio
 import struct
 import numpy as np
-from math import factorial
 import time
 import sys
 
@@ -221,6 +220,7 @@ def interpData(barValues, oldList):
 
 # Savitzky Golay Filter straight from the SciPy Cookbook
 def savitzkyGolay(y, window_size, order, deriv=0, rate=1):
+    from math import factorial
     try:
         window_size = np.abs(np.int(window_size))
         order = np.abs(np.int(order))
@@ -313,5 +313,13 @@ def transformData(dataList, plotsList, curvy=False):
         p = curvy[1]
         filtered = savitzkyGolay(curveArray, w, p)  # data, window size, polynomial order
         barValues = list(map(int, filtered))
+
+        # Apply a basic moving avg on top to blend data
+        movingAvg = []
+        movingAvg.append((barValues[0] + barValues[1]) // 2)
+        movingAvg.extend(map(lambda back, mid, front: (back + mid + front) // 3, barValues[0:], barValues[1:], barValues[2:]))
+        movingAvg.append((barValues[-2] + barValues[-1]) // 2)
+
+        barValues = movingAvg
 
     return barValues

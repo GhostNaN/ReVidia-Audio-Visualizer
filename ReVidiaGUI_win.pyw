@@ -31,18 +31,14 @@ class ReVidiaMain(QMainWindow):
         # Default variables
         self.title = 'ReVidia'
         self.frameRate = 150
-        self.startPoint = 0
-        self.startCurve = 1
-        self.midPoint = 1000
-        self.midPointPos = 0.66
-        self.endCurve = 1
-        self.endPoint = 12000
+        # [startPoint, startCurve, midPoint, midPointPos, endCurve, endPoint]
+        self.pointsList = [0, 1, 1000, 0.66, 1, 12000]
         self.split = 0
         self.curvy = 0
         self.interp = 2
         self.audioBuffer = 4096
-        self.backgroundColor = QColor(50, 50, 50, 255)
-        self.barColor = QColor(255, 255, 255, 255)      # R, G, B, Alpha 0-255
+        self.backgroundColor = QColor(50, 50, 50, 255)  # R, G, B, Alpha 0-255
+        self.barColor = QColor(255, 255, 255, 255)
         self.outlineColor = QColor(0, 0, 0)
         self.gradient = 0
         self.lumen = 0
@@ -64,7 +60,7 @@ class ReVidiaMain(QMainWindow):
         self.initUI()
 
     # Setup main window
-    def initUI(self):
+    def initUI(self, reload=False):
         self.setWindowIcon(QIcon('docs/REV.png'))
         self.setWindowTitle(self.title)
         self.setGeometry(self.left, self.top, self.width, self.height)
@@ -72,16 +68,27 @@ class ReVidiaMain(QMainWindow):
         self.setAttribute(Qt.WA_TranslucentBackground, True)    # Initial background is transparent
         self.setWindowFlags(Qt.FramelessWindowHint)
         self.setTextPalette()
-        self.getDevice(True)    # Get Device before starting
+        if not reload:
+            self.getDevice(True)  # Get Device before starting
 
         # Setup menu bar
-        mainBar = self.menuBar()
-        mainMenu = mainBar.addMenu('Main')
+        self.mainBar = self.menuBar()
+        mainMenu = self.mainBar.addMenu('Main')
         mainMenu.setToolTipsVisible(True)
-        designMenu = mainBar.addMenu('Design')
+        designMenu = self.mainBar.addMenu('Design')
         designMenu.setToolTipsVisible(True)
-        statsMenu = mainBar.addMenu('Stats')
+        statsMenu = self.mainBar.addMenu('Stats')
         statsMenu.setToolTipsVisible(True)
+
+        profilesMenu = QMenu('Profiles', self)
+        profilesMenu.setToolTip('Save and Load Profiles')
+        save = QAction('Save', self)
+        save.triggered.connect(lambda triggered, request='save': self.setProfile(request))
+        load = QAction('Load', self)
+        load.triggered.connect(lambda triggered, request='load': self.setProfile(request))
+        delete = QAction('Delete', self)
+        delete.triggered.connect(lambda triggered, request='delete': self.setProfile(request))
+        profilesMenu.addActions((save, load, delete))
 
         deviceDialog = QAction('Device', self)
         deviceDialog.setToolTip('Select Audio Device')
@@ -112,7 +119,7 @@ class ReVidiaMain(QMainWindow):
 
         interpMenu = QMenu('Interpolation', self)
         interpMenu.setToolTip('Set Interp Amount (Noise)')
-        interpSettings = ['No Interpolation', 'Low', 'Mid', 'High', 'Ultra']
+        interpSettings = ['No Interpolation', 'Low [1x]', 'Mid [2x]', 'High [4x]', 'Ultra [6x]']
         interpList = [0, 1, 2, 4, 6]
         interp = 0
         self.interpDict = {}
@@ -231,6 +238,7 @@ class ReVidiaMain(QMainWindow):
         fpsDock.setWidget(self.fpsSpinBox)
         fpsDock.show()
 
+        mainMenu.addMenu(profilesMenu)
         mainMenu.addAction(deviceDialog)
         mainMenu.addAction(scaleDialog)
         mainMenu.addAction(splitCheck)
@@ -250,10 +258,17 @@ class ReVidiaMain(QMainWindow):
         statsMenu.addAction(self.freqsCheck)
         statsMenu.addAction(self.notesCheck)
 
+        if reload:  # Manual setting trigger after a reload
+            self.curvyDict[str(self.curvy)].trigger()
+            self.interpDict[str(self.interp)].trigger()
+            self.audioBufferDict[str(self.audioBuffer)].trigger()
+
         self.setWindowFlags(self.windowFlags() & ~Qt.FramelessWindowHint)   # Fixes Windows window bug
         self.show()
         self.starterVars()
-        self.startProcesses()
+        if not reload:
+            self.updatePlots()
+            self.startProcesses()
 
     def starterVars(self):
         # Define placeholder stater variables
@@ -266,9 +281,6 @@ class ReVidiaMain(QMainWindow):
         self.paintBusy = 0
         self.paintTime = 0
         self.paintDelay = (1 / self.frameRate)
-        self.pointsList = [self.startPoint, self.startCurve, self.midPoint, self.midPointPos, self.endCurve, self.endPoint]
-        self.oldPoints = [self.startPoint, self.startCurve, self.midPoint, self.midPointPos, self.endCurve, self.endPoint]
-        self.updatePlots()
 
     def startProcesses(self):
         self.blockLock = th.Lock()
@@ -355,10 +367,8 @@ class ReVidiaMain(QMainWindow):
         if self.barsAmt > self.audioBuffer // 4:
             self.barsAmt = self.audioBuffer // 4
 
-        if (self.barsAmt != oldBarsAmt) or (self.oldPoints != self.pointsList):
+        if (self.barsAmt != oldBarsAmt):
             self.updatePlots()
-
-        self.oldPoints = self.pointsList
 
         # Update height slider
         if hasattr(self, 'showHeightSlider'):
@@ -659,6 +669,58 @@ class ReVidiaMain(QMainWindow):
 
             painter.drawText(xPos, yPos, text)
 
+    def setProfile(self, request):
+        import pickle
+        import os
+        self.width = self.size().width()
+        self.height = self.size().height()
+        saveList = ['width', 'height', 'frameRate', 'pointsList', 'split', 'curvy', 'interp', 'audioBuffer', 'lumen',
+                    'checkRainbow', 'barWidth', 'gapWidth', 'outlineSize', 'barHeight', 'wholeWidth', 'outline',
+                    'cutout', 'checkFreq', 'checkNotes', 'checkDeadline', 'checkBarNum', 'checkLatency', 'checkDB',
+                    'backgroundColor', 'barColor', 'outlineColor']
+
+        if request == 'save':
+            profile, ok = QInputDialog.getText(self, "Save Profile", "Profile Name:")
+            if ok and profile:
+                with open('profiles/' + profile + '.pkl', 'wb') as file:
+                    for setting in saveList:
+                        pickle.dump(getattr(self, setting), file)
+                    if self.gradient:
+                        grad = self.gradient
+                        gradAttr = grad.start(), grad.finalStop(), grad.stops(), grad.coordinateMode()
+                        pickle.dump(gradAttr, file)
+                    else:
+                        pickle.dump(0, file)
+        else:
+            profileList = []
+            for file in os.listdir('profiles'):
+                profileList.append(file.strip('.pkl'))
+            if not profileList:
+                profileList.append('No Profiles Saved')
+
+            if request == 'load':
+                profile, ok = QInputDialog.getItem(self, "Load Profile", "Select Profile:", profileList, 0, False)
+                if ok and profile and profileList != ['No Profiles Saved']:
+                    with open('profiles/' + profile + '.pkl', 'rb') as file:
+                        for setting in saveList:
+                            var = pickle.load(file)
+                            setattr(self, setting, var)
+                        gradAttr = pickle.load(file)
+                        if gradAttr:
+                            self.gradient = QLinearGradient(gradAttr[0], gradAttr[1])
+                            self.gradient.setStops(gradAttr[2])
+                            self.gradient.setCoordinateMode(gradAttr[3])
+                        else:
+                            self.gradient = 0
+                    self.mainBar.clear()
+                    self.fpsSpinBox.close()
+                    self.initUI(True)
+
+            elif request == 'delete':
+                profile, ok = QInputDialog.getItem(self, "Delete Profile", "Select Profile:", profileList, 0, False)
+                if ok and profile and profileList != ['No Profiles Saved']:
+                    os.remove('profiles/' + profile + '.pkl')
+
     def getDevice(self, firstRun):
         # Run device getter on separate Process because the other PA won't start if not done
         devQ = mp.Queue()
@@ -734,6 +796,7 @@ class ReVidiaMain(QMainWindow):
 
         self.dataQ.put(['buffer', self.audioBuffer])
         self.proQ.put(['buffer', self.audioBuffer])
+        self.updatePlots()
 
     def setBarColor(self):
         self.barColor = QColorDialog.getColor(self.barColor,None,None,QColorDialog.ShowAlphaChannel)
@@ -967,18 +1030,18 @@ class ReVidiaMain(QMainWindow):
                 return
             if self.menuToggle == 1:
                 self.menuToggle = 2
-                oldY = self.y()
+                self.oldX = self.x()
+                self.oldY = self.y()
                 self.setWindowFlags(Qt.FramelessWindowHint)
                 self.show()
                 return
             if self.menuToggle == 2:
                 self.menuToggle = 0
-                oldY = self.y()
                 self.setWindowFlags(self.windowFlags() & ~Qt.FramelessWindowHint)
                 self.menuBar().show()
                 self.fpsSpinBox.show()
                 self.show()
-                self.move(self.x() - 8, oldY - 31)  # Fixes a weird bug with the window
+                self.move(self.oldX, self.oldY)  # Fixes a weird bug with the window
                 return
 
     # Allows to adjust bars height by scrolling on window
@@ -1016,6 +1079,13 @@ class ScaleDialog(QMainWindow):
         self.holdEndPoint = 0
         self.scaleMode = 0
 
+        self.startPoint = self.main.pointsList[0]
+        self.startCurve = self.main.pointsList[1]
+        self.midPoint = self.main.pointsList[2]
+        self.midPointPos = self.main.pointsList[3]
+        self.endCurve = self.main.pointsList[4]
+        self.endPoint = self.main.pointsList[5]
+
         self.intiUI()
 
     def intiUI(self):
@@ -1034,7 +1104,7 @@ class ScaleDialog(QMainWindow):
         self.startPointSpinBox.setMaximumWidth(90)
         self.startPointSpinBox.setMaximumHeight(20)
         self.startPointSpinBox.valueChanged.connect(self.setStartPoint)
-        self.startPointSpinBox.setValue(self.main.startPoint)
+        self.startPointSpinBox.setValue(self.startPoint)
         self.startPointSpinBox.setKeyboardTracking(False)
         self.startPointSpinBox.setFocusPolicy(Qt.ClickFocus)
         startPointDock = QDockWidget(self)
@@ -1049,7 +1119,7 @@ class ScaleDialog(QMainWindow):
         self.midPointSpinBox.setMaximumWidth(90)
         self.midPointSpinBox.setMaximumHeight(20)
         self.midPointSpinBox.valueChanged.connect(self.setMidPoint)
-        self.midPointSpinBox.setValue(self.main.midPoint)
+        self.midPointSpinBox.setValue(self.midPoint)
         self.midPointSpinBox.setKeyboardTracking(False)
         self.midPointSpinBox.setFocusPolicy(Qt.ClickFocus)
         midPointDock = QDockWidget(self)
@@ -1064,7 +1134,7 @@ class ScaleDialog(QMainWindow):
         self.endPointSpinBox.setMaximumWidth(90)
         self.endPointSpinBox.setMaximumHeight(20)
         self.endPointSpinBox.valueChanged.connect(self.setEndPoint)
-        self.endPointSpinBox.setValue(self.main.endPoint)
+        self.endPointSpinBox.setValue(self.endPoint)
         self.endPointSpinBox.setKeyboardTracking(False)
         self.endPointSpinBox.setFocusPolicy(Qt.ClickFocus)
         endPointDock = QDockWidget(self)
@@ -1085,20 +1155,21 @@ class ScaleDialog(QMainWindow):
         self.update()
 
     def setStartPoint(self, value):
-        self.main.startPoint = value
+        self.startPoint = value
         self.updatePoints()
 
     def setMidPoint(self, value):
-        self.main.midPoint = value
+        self.midPoint = value
         self.updatePoints()
 
     def setEndPoint(self, value):
-        self.main.endPoint = value
+        self.endPoint = value
         self.updatePoints()
 
     def updatePoints(self):
-        self.main.pointsList = [self.main.startPoint, self.main.startCurve, self.main.midPoint,
-                                self.main.midPointPos, self.main.endCurve, self.main.endPoint]
+        self.main.pointsList = [self.startPoint, self.startCurve, self.midPoint,
+                                self.midPointPos, self.endCurve, self.endPoint]
+        self.main.updatePlots()
         self.update()
 
     def resizeEvent(self, event):
@@ -1133,7 +1204,7 @@ class ScaleDialog(QMainWindow):
 
         freqList = (ReVidia_win.assignFreq(self.main.audioBuffer, self.main.sampleRate, self.main.plotsList, True))
 
-        midPoint = int(round(self.main.barsAmt * self.main.midPointPos))
+        midPoint = int(round(self.main.barsAmt * self.midPointPos))
         for i in range(len(freqList)):
             freq = freqList[i]
 
@@ -1161,7 +1232,7 @@ class ScaleDialog(QMainWindow):
 
         xTextPos = self.startCenterPoint.x() + self.pRad + 1
         yTextPos = self.startCenterPoint.y() - self.pRad
-        painter.drawText(xTextPos, yTextPos, str(round(self.main.startPoint)) + ' HZ')
+        painter.drawText(xTextPos, yTextPos, str(round(self.startPoint)) + ' HZ')
 
         xPos = int(midXPos)
         yPos = midYPos
@@ -1170,7 +1241,7 @@ class ScaleDialog(QMainWindow):
 
         xTextPos = self.midCenterPoint.x() - 30
         yTextPos = self.midCenterPoint.y() - (self.pRad * 2)
-        painter.drawText(xTextPos, yTextPos, str(round(self.main.midPoint)) + ' HZ')
+        painter.drawText(xTextPos, yTextPos, str(round(self.midPoint)) + ' HZ')
 
         xPos = (self.size().width() - self.border)
         yPos = yPos2
@@ -1179,7 +1250,7 @@ class ScaleDialog(QMainWindow):
         painter.drawEllipse(self.endCenterPoint, self.pRad, self.pRad)
 
         digits = 0
-        number = self.main.endPoint
+        number = self.endPoint
         if number == 0: digits = 1
         while number > 0:
             number //= 10
@@ -1187,7 +1258,7 @@ class ScaleDialog(QMainWindow):
         xTextPos = self.endCenterPoint.x() - (digits * 9) - (self.pRad * 4)
         yTextPos = self.endCenterPoint.y() - self.pRad
 
-        painter.drawText(xTextPos, yTextPos, str(round(self.main.endPoint)) + ' HZ')
+        painter.drawText(xTextPos, yTextPos, str(round(self.endPoint)) + ' HZ')
 
         painter.end()
 
@@ -1213,54 +1284,52 @@ class ScaleDialog(QMainWindow):
                 if index > self.boundry.height()-1: index = self.boundry.height()-1
                 if index < 0: index = 0
 
-                self.main.startPoint = int(self.freqScale[index])
-                self.startPointSpinBox.setValue(self.main.startPoint)
+                self.startPoint = int(self.freqScale[index])
+                self.startPointSpinBox.setValue(self.startPoint)
 
             if self.holdMidPoint:
                 midX = (event.x() - self.border) / self.boundry.width()
                 if midX > 0.9: midX = 0.9
                 if midX < 0.1: midX = 0.1
 
-                self.main.midPointPos = midX
+                self.midPointPos = midX
 
                 index = self.size().height() - event.y() - self.border
                 if index > self.boundry.height()-1: index = self.boundry.height()-1
                 if index < 0: index = 0
 
-                self.main.midPoint = int(self.freqScale[index])
-                self.midPointSpinBox.setValue(self.main.midPoint)
+                self.midPoint = int(self.freqScale[index])
+                self.midPointSpinBox.setValue(self.midPoint)
 
             if self.holdEndPoint:
                 index = self.size().height() - event.y() - self.border
                 if index > self.boundry.height()-1: index = self.boundry.height()-1
                 if index < 0: index = 0
 
-                self.main.endPoint = int(self.freqScale[index])
-                self.endPointSpinBox.setValue(self.main.endPoint)
+                self.endPoint = int(self.freqScale[index])
+                self.endPointSpinBox.setValue(self.endPoint)
 
-            self.main.pointsList = [self.main.startPoint, self.main.startCurve, self.main.midPoint,
-                                    self.main.midPointPos, self.main.endCurve, self.main.endPoint]
+            self.updatePoints()
             self.update()
 
     def wheelEvent(self, event):
         mouseDir = event.angleDelta().y()
         if self.holdStartPoint:
             if mouseDir > 0:
-                if self.main.startCurve < 3:
-                    self.main.startCurve += 0.1
+                if self.startCurve < 3:
+                    self.startCurve += 0.1
             elif mouseDir < 0:
-                if self.main.startCurve > -2:
-                    self.main.startCurve -= 0.1
+                if self.startCurve > -2:
+                    self.startCurve -= 0.1
         if self.holdMidPoint:
             if mouseDir > 0:
-                if self.main.endCurve < 3:
-                    self.main.endCurve += 0.1
+                if self.endCurve < 3:
+                    self.endCurve += 0.1
             elif mouseDir < 0:
-                if self.main.endCurve > -2:
-                    self.main.endCurve -= 0.1
+                if self.endCurve > -2:
+                    self.endCurve -= 0.1
 
-        self.main.pointsList = [self.main.startPoint, self.main.startCurve, self.main.midPoint,
-                                self.main.midPointPos, self.main.endCurve, self.main.endPoint]
+        self.updatePoints()
         self.update()
 
     def mouseReleaseEvent(self, event):
@@ -1280,7 +1349,7 @@ class GradientDialog(QMainWindow):
         self.intiUI()
 
         if self.main.gradient:
-            self.pointsList = self.main.gradient.stops()
+            self.colorPoints = self.main.gradient.stops()
             if self.main.gradient.start().y() > 0:
                 self.dirMode = 0
                 self.dirModeCheck.setText('Vertical')
@@ -1296,7 +1365,7 @@ class GradientDialog(QMainWindow):
                 self.fillModeCheck.setText('Per-Bar')
 
         else:
-            self.pointsList = []
+            self.colorPoints = []
             self.fillMode = 0
             self.dirMode = 0
 
@@ -1348,7 +1417,7 @@ class GradientDialog(QMainWindow):
         self.setGradient()
 
     def runClear(self):
-        self.pointsList = []
+        self.colorPoints = []
         self.setGradient()
 
     def setEnabled(self, on):
@@ -1368,8 +1437,7 @@ class GradientDialog(QMainWindow):
         else:
             gradient.setCoordinateMode(QGradient.ObjectBoundingMode)
 
-        for point in self.pointsList:
-            gradient.setColorAt(point[0], point[1])
+        gradient.setStops(self.colorPoints)
 
         if self.dirMode == 0:
             start = 0, 1
@@ -1402,7 +1470,7 @@ class GradientDialog(QMainWindow):
 
         painter.setPen(QPen(QColor(0, 0, 0), 3, Qt.DotLine))
 
-        for point in self.pointsList:
+        for point in self.colorPoints:
             if self.dirMode == 0:
                 pos = int((self.GH - (point[0] * self.GH)) + yPos)
                 painter.drawLine(0, pos, self.GW, pos)
@@ -1419,7 +1487,7 @@ class GradientDialog(QMainWindow):
 
             color = QColorDialog.getColor(QColor(255,255,255),None,None,QColorDialog.ShowAlphaChannel)
 
-            self.pointsList.append((point, color))
+            self.colorPoints.append((point, color))
             self.setGradient()
 
     def mousePressEvent(self, event):
@@ -1429,9 +1497,9 @@ class GradientDialog(QMainWindow):
             else:
                 posF = event.x() / self.GW
 
-            for point in self.pointsList:
+            for point in self.colorPoints:
                 if (point[0] - 0.01 < posF) and (point[0] + 0.01 > posF):
-                    self.pointsList.remove(point)
+                    self.colorPoints.remove(point)
 
             self.setGradient()
 
