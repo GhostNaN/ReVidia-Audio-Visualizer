@@ -41,7 +41,8 @@ If you are on **Linux**, ReVidia will try to use JACK to retrieve your output au
 If you use JACK normally like below, then just pick the JACK input.
 - https://forum.manjaro.org/t/how-to-replace-pulseaudio-with-jack-jack-and-pulseaudio-together-as-friend/2086
 
-  
+&nbsp;
+
 If you are using **Windows** I HIGHLY recommend installing VB-CABLE:
 - https://www.vb-audio.com/Cable/index.htm#DownloadCable  
 
