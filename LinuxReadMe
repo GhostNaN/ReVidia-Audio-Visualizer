@@ -4,7 +4,7 @@ Installation
 ============================
 
 ReVidia on Linux REQUIRES Python 3.7+ and Portaudio
-Optional: JACK(Along with pulseaudio-jack)
+Optional: PulseAudio
 
 If you don't have PortAudio download and compile it from:
 http://www.portaudio.com/download.html
@@ -24,8 +24,8 @@ Usage/About
 
 General:
 
-- This software ONLY accepts JACK(Pulseaudio(using "pactl") and with a ALSA device(hw:x,y)) to use your speaker audio.
-  If you use JACK normally like below, then just pick the JACK input.
+- This software ONLY accepts PulseAudio to use your speaker audio.
+  Otherwise if you use JACK normally like below, then just pick the JACK input.
   https://forum.manjaro.org/t/how-to-replace-pulseaudio-with-jack-jack-and-pulseaudio-together-as-friend/2086
   
 - The FPS combo box is the global timer. So if you set it higher, everything will run faster and vice versa.
