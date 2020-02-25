@@ -5,7 +5,7 @@
 - Linux: master branch
 - Windows: win-port branch 
 ## Requirements
-#### Linux: Python 3.7+ and Portaudio | Optional: JACK(Along with pulseaudio-jack)
+#### Linux: Python 3.7+ and Portaudio | Optional: PulseAudio
 
 - Most distros should have Python already installed
 - If you don't have PortAudio, download and compile it from:
@@ -35,10 +35,9 @@ install.bat
 ## Important Notes:
 #### This program ONLY accepts input audio streams
 
-If you are on **Linux**, ReVidia will try to use JACK to retrieve your output audio:
-- Just make sure you have jack, pulseaudio-jack, alsa and pulseaudio(with "pactl")
+If you are on **Linux**, ReVidia will try to use ALSA to retrieve your PulseAudio output
 
-If you use JACK normally like below, then just pick the JACK input.
+Otherwise if you use JACK normally like below, then just pick the JACK input.
 - https://forum.manjaro.org/t/how-to-replace-pulseaudio-with-jack-jack-and-pulseaudio-together-as-friend/2086
 
 &nbsp;
