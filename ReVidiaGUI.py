@@ -732,6 +732,9 @@ class ReVidiaMain(QMainWindow):
             defaultList.append('Default PulseAudio Input Device')
 
         itemList = defaultList + deviceList[0]
+        if 'Input: revidia_capture - ALSA' in itemList:  # Hide custom ALSA device
+            itemList.remove('Input: revidia_capture - ALSA')
+
         if not pulseAudio:
             device, ok = QInputDialog.getItem(self, "ReVidia", "Select Audio Device:", itemList, 0, False)
         else:   # Auto select PulseAudio
