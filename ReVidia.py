@@ -9,28 +9,38 @@ import sys
 
 # Displays device ID options
 def deviceNames(q, output=True):
-    import re
-    p = pyaudio.PyAudio()
-    outList, inputList, hwIDList, idList, samplesOut, sampleIn = [], [], [], [], [], []
-    numDevices = p.get_device_count()
+    import subprocess
 
+    pulseList, inputList, monitorList, idList, samples = [], [], [], [], []
+
+    if output:  # Get PulseAudio monitors
+        result = subprocess.getoutput('pactl list sources | grep "Name:" | grep "monitor"')
+        if result:
+            resultSplit = result.split('\n')
+            for line in resultSplit:
+                monitorList.append(line.split('\tName: ')[1])
+
+            for monitor in monitorList:
+                result = subprocess.getoutput(
+                    'pactl list sources | sed -n /' + monitor + '/,/"Source #"/p | grep -e "alsa.card_name ="')
+                if result:
+                    pulseList.append('Output: ' + result.split('\t\talsa.card_name = "')[1].split('"')[0] + ' - PulseAudio')
+                else:
+                    pulseList.append('Output: ' + monitor.split('.monitor')[0] + ' - PulseAudio')
+                samples.append(0)
+
+    p = pyaudio.PyAudio()
+    numDevices = p.get_device_count()
     for ID in range(numDevices):
         API = p.get_host_api_info_by_index(p.get_device_info_by_index(ID).get('hostApi')).get('name')
         name = p.get_device_info_by_index(ID).get('name')
 
-        if output:
-            if (p.get_device_info_by_index(ID).get('maxOutputChannels')) > 0:
-                if re.search(r'(hw:\d+,\d)+', name):
-                    outList.append('Output: ' + name + ' - ' + str(API))
-                    hwIDList.append(re.findall(r'(hw:\d+,\d)+', name)[0])
-                    samplesOut.append(0)
-
         if (p.get_device_info_by_index(ID).get('maxInputChannels')) > 0:
             inputList.append('Input: ' + name + ' - ' + str(API))
             idList.append(ID)
-            sampleIn.append(p.get_device_info_by_index(ID).get('defaultSampleRate'))
+            samples.append(p.get_device_info_by_index(ID).get('defaultSampleRate'))
 
-    deviceList = [outList + inputList, hwIDList + idList, samplesOut + sampleIn]
+    deviceList = [pulseList + inputList, monitorList + idList, samples]
     p.terminate()
     q.put(deviceList)
 

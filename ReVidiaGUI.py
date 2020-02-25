@@ -17,16 +17,6 @@ class ReVidiaMain(QMainWindow):
     def __init__(self):
         super(ReVidiaMain, self).__init__()
 
-        try:    # Get user default pulseaduio device
-            result = subprocess.getoutput('pactl info | grep "Default Sink:"')
-            self.userSink = result.split('Default Sink: ')[1]
-            result = subprocess.getoutput('pactl info | grep "Default Source:"')
-            self.userSource = result.split('Default Source: ')[1]
-        except:
-            print('Can\'t find Pulseaudio: Outputs disabled')
-            self.userSink = 0
-            self.userSource = 0
-
         # Sets up window to be in the middle and to be half screen height
         screen = QApplication.desktop().screenNumber(
             QApplication.desktop().cursor().pos())
@@ -718,97 +708,77 @@ class ReVidiaMain(QMainWindow):
                 if ok and profile and profileList != ['No Profiles Saved']:
                     os.remove('profiles/' + profile + '.pkl')
 
-    def getDevice(self, firstRun, output=False):
-        # Find default devices for PyAudio
-        defaultHWOut = ''
-        defaultHWIn = ''
-        if self.userSink:
-            result = subprocess.getoutput(
-                'pactl list sinks | sed -n /' + self.userSink + '/,/"Sink #"/p | grep -e "alsa.card =" -e "alsa.device"')
-            if result:
-                card = result.split('alsa.card = "')[1].split('"')[0]
-                device = result.split('alsa.device = "')[1].split('"')[0]
-                defaultHWOut = 'hw:' + card + ',' + device
-
-        if self.userSource:
-            result = subprocess.getoutput(
-                'pactl list sources | sed -n /' + self.userSource + '/,/"Source #"/p | grep -e "alsa.card =" -e "alsa.device"')
-            if result:
-                card = result.split('alsa.card = "')[1].split('"')[0]
-                device = result.split('alsa.device = "')[1].split('"')[0]
-                defaultHWIn = 'hw:' + card + ',' + device
-
-        if defaultHWOut or defaultHWIn:
-            # Free up default audio device so it can be detected
-            subprocess.run('pactl suspend-sink "' + self.userSink + '" 1', shell=True)
+    def getDevice(self, firstRun, pulseAudio=False):
+        try:  # Get user default pulseaduio device
+            result = subprocess.getoutput('pactl info | grep "Default Sink:"')
+            self.userSink = result.split('Default Sink: ')[1] + '.monitor'
+            result = subprocess.getoutput('pactl info | grep "Default Source:"')
+            self.userSource = result.split('Default Source: ')[1]
+        except:
+            print('Can\'t find Pulseaudio: Outputs disabled')
+            self.userSink = 0
+            self.userSource = 0
 
         # Run device getter on separate Process because the other PA won't start if not done
         devQ = mp.Queue()
         D1 = mp.Process(target=ReVidia.deviceNames, args=(devQ, self.userSink))
         D1.start(), D1.join()
         deviceList = devQ.get()
-        if defaultHWOut or defaultHWIn:
-            subprocess.run('pactl suspend-sink "' + self.userSink + '" 0', shell=True)
 
         defaultList = []
-        if defaultHWOut:
-            defaultList.append('Default ALSA Output Device')
-        if defaultHWIn:
-            defaultList.append('Default ALSA Input Device')
+        if self.userSink:
+            defaultList.append('Default PulseAudio Output Device')
+        if self.userSource:
+            defaultList.append('Default PulseAudio Input Device')
 
         itemList = defaultList + deviceList[0]
-        if not output:
+        if not pulseAudio:
             device, ok = QInputDialog.getItem(self, "ReVidia", "Select Audio Device:", itemList, 0, False)
-        else:   # Auto select JACK
-            device = 'Input: PulseAudio JACK Sink - JACK Audio Connection Kit'
+        else:   # Auto select PulseAudio
+            device = 'Input: revidia_capture - ALSA'
             ok = 1
 
         if ok and device:
-            if defaultHWOut in device and 'Output' in device:
-                device = 'Default ALSA Output Device'
             # Getting ID
-            if device == 'Default ALSA Output Device':
-                ID = defaultHWOut
-            elif device == 'Default ALSA Input Device':
-                ID = defaultHWIn
-                for device in deviceList[0]:
-                    if defaultHWOut in device and 'Input' in device:
-                        ID = deviceList[1][deviceList[0].index(device)]
+            if device == 'Default PulseAudio Output Device':
+                ID = self.userSink
+            elif device == 'Default PulseAudio Input Device':
+                ID = self.userSource
             else:
                 ID = deviceList[1][deviceList[0].index(device)]
 
-            if isinstance(ID, int):  # If PortAudio Index Num, continue
+            if 'Input:' in device:  # If PortAudio Index Num, continue
                 self.ID = ID
                 self.sampleRate = deviceList[2][deviceList[0].index(device)]
-            else:   # If hw:x,y run JACK
-                if not firstRun:    # Kill JACK if already running
-                    if hasattr(self, 'jack'):
-                        subprocess.run('pactl set-default-sink "' + self.userSink + '"',
-                                       shell=True)  # Restore user's default
-                        self.jack.kill()
-                        del self.jack
+            else:   # If PulseAudio input turn into ALSA input
+                import os
+                alsaFolder = os.getenv("HOME") + '/.asoundrc'
 
-                # Free up default audio device so it can be used
-                subprocess.run('pactl suspend-sink "' + self.userSink + '" 1', shell=True)
+                # Check/Clean lines for an old "pcm.revidia_capture" device
+                self.cleanLines = []
+                skip = 0
+                with open(alsaFolder, 'r') as alsaConf:
+                    allLines = alsaConf.readlines()
+                    for line in allLines:
+                        if not skip:
+                            if not 'pcm.revidia_capture' in line:
+                                self.cleanLines.append(line)
+                            else:
+                                skip = 1
+                        else:
+                            if '}' in line:
+                                skip = 0
+                if allLines != self.cleanLines:
+                    with open(alsaFolder, 'w') as alsaConf:
+                        alsaConf.writelines(self.cleanLines)
 
-                # Start Jack and change Pulseaudio device to Jack_Sink to collect data
-                self.jack = subprocess.Popen('jackd -T -d alsa -d' + ID, shell=True)
-                subprocess.run('pactl load-module module-jack-sink sink_name="Jack_Sink" ', shell=True)
-                subprocess.run('pactl suspend-sink "' + self.userSink + '" 0', shell=True)
-
-                if device == 'Default ALSA Output Device':
-                    subprocess.run('pactl set-default-sink "Jack_Sink"', shell=True)
-
-                # Moving over streams to Default Sink
-                result = subprocess.getoutput('pactl list sink-inputs | grep "Sink Input #"')
-                if result:
-                    streams = result.split('\n')
-                    result = subprocess.getoutput('pactl info | grep "Default Sink:"')
-                    defaultSink = result.split('Default Sink: ')[1]
-                    for stream in streams:
-                        index = stream.split('Sink Input #')[1]
-                        subprocess.run('pactl move-sink-input ' + index + ' "' + defaultSink + '"', shell=True)
-
+                # Create ALSA device to connect to PulseAudio
+                with open(alsaFolder, 'a') as alsaConf:
+                    alsaConf.write('pcm.revidia_capture {'
+                                   '\n    type pulse'
+                                   '\n    device ' + ID +
+                                   '\n}')
+                # Rerun to select the device just created
                 if firstRun:
                     self.getDevice(True, True)
                 else:
@@ -1154,9 +1124,11 @@ class ReVidiaMain(QMainWindow):
             self.mainQ.put(1)   # End main thread
             self.P1.terminate()   # Kill Processes
             self.T1.terminate()
-            if hasattr(self, 'jack'):
-                subprocess.run('pactl set-default-sink "' + self.userSink + '"', shell=True)  # Restore user's default
-                self.jack.kill()
+            if hasattr(self, 'cleanLines'):  # Clean up ~/.asoundrc
+                import os
+                alsaFolder = os.getenv("HOME") + '/.asoundrc'
+                with open(alsaFolder, 'w') as alsaConf:
+                    alsaConf.writelines(self.cleanLines)
         except RuntimeError:
             print('Some processes won\'t close properly, closing anyway.')
 
