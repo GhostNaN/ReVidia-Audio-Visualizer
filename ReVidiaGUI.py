@@ -681,7 +681,7 @@ class ReVidiaMain(QMainWindow):
         else:
             profileList = []
             for file in os.listdir('profiles'):
-                profileList.append(file.strip('.pkl'))
+                profileList.append(file.replace('.pkl', ''))
             if not profileList:
                 profileList.append('No Profiles Saved')
 
