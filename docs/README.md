@@ -51,7 +51,6 @@ This will allow you to use your speaker's audio and will have a better chance of
 ## Future Ideas:
 #### In order of importance:
 - General optimizing
-- Mabye implement a loop back to speakers on Windows
 - Fix how transparency is done on Windows
 - Overhaul the old Linux terminal version
 
