@@ -10,23 +10,29 @@ import sys
 # Displays device ID options
 def deviceNames(q):
     p = pyaudio.PyAudio()
-    deviceList, idList, sampleList = [], [], []
+    wasapiList, intputList, wasapiIdList, intputIdList, wasapiSampleList, inputSampleList = [], [], [], [], [], []
     numDevices = p.get_device_count()
     for ID in range(numDevices):
+        name = p.get_device_info_by_index(ID).get('name')
+        API = p.get_host_api_info_by_index(p.get_device_info_by_index(ID).get('hostApi')).get('name')
+        
         if (p.get_device_info_by_index(ID).get('maxInputChannels')) > 0:
-            API = p.get_host_api_info_by_index(p.get_device_info_by_index(ID).get('hostApi')).get('name')
             if not API in ['Windows WDM-KS', 'Windows DirectSound']:  # Removes crap windows APIs
-                deviceList.append(p.get_device_info_by_index(ID).get('name') + ' - ' + str(API))
-                idList.append(ID)
-                sampleList.append(p.get_device_info_by_index(ID).get('defaultSampleRate'))
+                intputList.append('Intput: ' + name + ' - ' + str(API))
+                intputIdList.append(ID)
+                inputSampleList.append(p.get_device_info_by_index(ID).get('defaultSampleRate'))
+        elif API == 'Windows WASAPI' and ((p.get_device_info_by_index(ID).get('maxOutputChannels')) > 0):
+            wasapiList.append('Output: ' + name + ' - ' + str(API))
+            wasapiIdList.append(ID)
+            wasapiSampleList.append(p.get_device_info_by_index(ID).get('defaultSampleRate'))
 
-    deviceList = [deviceList, idList, sampleList]
+    deviceList = [wasapiList + intputList, wasapiIdList + intputIdList, wasapiSampleList + inputSampleList]
     p.terminate()
     q.put(deviceList)
 
 
 # Collects the raw audio data and coverts to ints
-def collectData(dataTime, dataArr, dataArr2, dataQ, device, buffer, split):
+def collectData(dataTime, dataArr, dataArr2, dataQ, device, buffer, split, loopback):
     p = pyaudio.PyAudio()
     stream = p.open(
         input_device_index=device,
@@ -34,7 +40,8 @@ def collectData(dataTime, dataArr, dataArr2, dataQ, device, buffer, split):
         channels=2,
         rate=int(p.get_device_info_by_index(device).get('defaultSampleRate')),
         input=True,
-        frames_per_buffer=1)
+        frames_per_buffer=1,
+        as_loopback=loopback)
 
     i = 0
     while True:

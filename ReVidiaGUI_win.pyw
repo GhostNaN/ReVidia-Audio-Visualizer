@@ -300,7 +300,7 @@ class ReVidiaMain(QMainWindow):
 
         # Create separate process for audio data collection
         self.T1 = mp.Process(target=ReVidia_win.collectData, args=(
-            dataTime, self.dataArray, dataArray2, self.dataQ, self.ID, self.audioBuffer, self.split))
+            dataTime, self.dataArray, dataArray2, self.dataQ, self.ID, self.audioBuffer, self.split, self.loopback))
 
         # Create separate process for audio data processing
         self.P1 = mp.Process(target=ReVidia_win.processData, args=(
@@ -685,7 +685,7 @@ class ReVidiaMain(QMainWindow):
         else:
             profileList = []
             for file in os.listdir('profiles'):
-                profileList.append(file.replace('.pkl', ''))
+                profileList.append(file.strip('.pkl'))
             if not profileList:
                 profileList.append('No Profiles Saved')
 
@@ -723,6 +723,11 @@ class ReVidiaMain(QMainWindow):
         if ok and device:
             self.ID = deviceList[1][deviceList[0].index(device)]
             self.sampleRate = deviceList[2][deviceList[0].index(device)]
+
+            if 'Output:' in device:
+                self.loopback = True
+            else:
+                self.loopback = False
 
             if firstRun: return
             else:
