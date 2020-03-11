@@ -5,11 +5,12 @@
 - Linux: master branch
 - Windows: win-port branch 
 ## Requirements
-#### Windows: Python 3.8 with PATHS
+#### Windows: Python 3.8(64bit) with PATHS
 - Download Python here: https://www.python.org/downloads/
+- Just be sure to select a "Windows x86-64" version
 - During installation **MAKE SURE** you check the box: "Add Python to PATH"
 
-#### Highly recommend installing VB-CABLE for Windows (See Below in Important Notes)
+#### Optionally install VB-CABLE for Windows (See Below in Important Notes)
 
 ## Installation
 #### On Windows run:
@@ -24,16 +25,15 @@ install.bat
 ## Important Notes:
 #### This program ONLY accepts input(mics) audio streams for now
 
-If you are using **Windows** I HIGHLY recommend installing VB-CABLE:
+If you are using **Windows** you can optionally install VB-CABLE:
 - https://www.vb-audio.com/Cable/index.htm#DownloadCable  
 
-This will allow you to use your speaker's audio and will have a better chance of using a device:
+This will allow you to use a non-WASAPI speaker's audio and will have a better chance of using a device:
 - To use VB-CABLE follow the "Setting up VB-CABLE in 5 steps:" in the "WindowsReadme.txt"
   
 ## Future Ideas:
 #### In order of importance:
 - General optimizing
-- Mabye implement a loop back to speakers on Windows
 - Fix how transparency is done on Windows
 - Overhaul the old Linux terminal version
 
