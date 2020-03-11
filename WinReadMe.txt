@@ -3,9 +3,10 @@ ReVidia [Windows Port]
 Installation
 ============================
 
-ReVidia on Windows REQUIRES Python 3.8 
+ReVidia on Windows REQUIRES Python 3.8(64bit) 
 Download from here:
 https://www.python.org/downloads/
+Just be sure to select a "Windows x86-64" version
 
 During installation MAKE SURE you check the box:
 "Add Python to PATH" 
@@ -17,14 +18,11 @@ It might take a couple minutes, so wait until it says "Done"
 Then simply use the desktop shortcut to enjoy!
 
 
-I also HIGHLY recommend installing VB-CABLE: 
+Optionally install VB-CABLE: 
 https://www.vb-audio.com/Cable/index.htm#DownloadCable
 
-As this software ONLY accepts input(mics) audio streams on Windows for now.
-
-Without it you might not be able to select your speaker's audio 
-or even start the program at ALL because it also uses
-Windows audio APIs that meld better with PortAudio.
+In case no device is found or wasapi is not an option.
+As this software ONLY accepts inputs and wasapi audio streams on Windows.
 
 Setting up VB-CABLE in 5 steps:
 1. After installing VB-CABLE go into the sound control panel or by running "control.exe mmsys.cpl" 
@@ -33,7 +31,7 @@ Setting up VB-CABLE in 5 steps:
 4. Under the tab "Listen" check the box "Listen to this device" 
 5. Finally in the "Playback through this device:" select the speakers you normally use. 
 
-Then, if you like to use your speaker's audio
+Then, if you like to use your speaker's audio that's not wasapi
 just select any "CABLE Output" device in ReVidia.
 
 
@@ -44,11 +42,10 @@ General:
 
 - If you start the program and no device list is shown, it means that 
   no API you have is compatible and you should install VB-CABLE shown above.
-
-- If you really don't like VB-CABLE and you want to use your speaker audio try this guide:
-  https://www.howtogeek.com/howto/39532/how-to-enable-stereo-mix-in-windows-7-to-record-audio/
   
-- If you don't want to use Python 3.8, install PyAudio manually using the venv pip.
+- If you don't want to use Python 3.8(64bit), install PyAudio Loopback Fork manually:
+  https://github.com/intxcc/pyaudio_portaudio
+
   Then just ignore the error in the install.bat and continue.
 
 - Because how Windows uses transparency:
