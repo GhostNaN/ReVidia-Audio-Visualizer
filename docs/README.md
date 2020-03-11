@@ -12,11 +12,12 @@
 http://www.portaudio.com/download.html
   - If you can, use your package manager to install PortAudio
 
-#### Windows: Python 3.8 with PATHS
+#### Windows: Python 3.8(64bit) with PATHS
 - Download Python here: https://www.python.org/downloads/
+- Just be sure to select a "Windows x86-64" version
 - During installation **MAKE SURE** you check the box: "Add Python to PATH"
 
-#### Highly recommend installing VB-CABLE for Windows (See Below in Important Notes)
+#### Optionally install VB-CABLE for Windows (See Below in Important Notes)
 
 ## Installation
 #### On Linux in the project directory run:
@@ -42,10 +43,10 @@ Otherwise if you use JACK normally like below, then just pick the JACK input.
 
 &nbsp;
 
-If you are using **Windows** I HIGHLY recommend installing VB-CABLE:
+If you are using **Windows** you can optionally install VB-CABLE:
 - https://www.vb-audio.com/Cable/index.htm#DownloadCable  
 
-This will allow you to use your speaker's audio and will have a better chance of using a device:
+This will allow you to use a non-WASAPI speaker's audio and will have a better chance of using a device:
 - To use VB-CABLE follow the "Setting up VB-CABLE in 5 steps:" in the "WindowsReadme.txt"
   
 ## Future Ideas:
