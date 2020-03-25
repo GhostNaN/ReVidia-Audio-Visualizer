@@ -31,7 +31,7 @@ def deviceNames(q, output=True):
 
     p = pyaudio.PyAudio()
     numDevices = p.get_device_count()
-    for ID in range(numDevices):
+    for ID in range(numDevices):  # Get inputs
         API = p.get_host_api_info_by_index(p.get_device_info_by_index(ID).get('hostApi')).get('name')
         name = p.get_device_info_by_index(ID).get('name')
 
@@ -309,12 +309,30 @@ def dataPlotter(values, step, limit):
     return plottedList
 
 
+def rescaleData(data, dataCap, ceiling, log=False):
+    if not dataCap:
+        dataCap = 1
+    if not log:
+        scaledData = np.interp(data, (0, dataCap), (0, ceiling))
+    else:   # WIP may be used later
+        dataLog = np.log10(data)
+        rangeLog = (0, np.log10(dataCap))
+        scaleLog = (0, np.log10(ceiling))
+        logScaled = np.power(10, np.interp(dataLog, rangeLog, scaleLog))
+
+        scaledData = np.nan_to_num(logScaled)
+
+    rescaled = list(map(int, scaledData))
+
+    return rescaled
+
+
 # Processes the audio data into proper
 def transformData(dataList, plotsList, curvy=False):
     buffer = len(dataList)
 
     # The heart of ReVidia, the fourier transform.
-    transform = np.fft.rfft(dataList, buffer)
+    transform = np.fft.rfft(dataList, buffer, norm="ortho")
     absTransform = np.abs(transform)     # Each plot is rate/buffer = frequency
 
     barValues = []
@@ -331,15 +349,17 @@ def transformData(dataList, plotsList, curvy=False):
         curveArray = np.array(barValues)
         w = curvy[0]
         p = curvy[1]
+        if w > len(plotsList): w = len(plotsList)  # Fail Safes
+        if (w % 2) == 0: w += 1
+
         filtered = savitzkyGolay(curveArray, w, p)  # data, window size, polynomial order
-        barValues = list(map(int, filtered))
 
         # Apply a basic moving avg on top to blend data
         movingAvg = []
-        movingAvg.append((barValues[0] + barValues[1]) // 2)
-        movingAvg.extend(map(lambda back, mid, front: (back + mid + front) // 3, barValues[0:], barValues[1:], barValues[2:]))
-        movingAvg.append((barValues[-2] + barValues[-1]) // 2)
+        movingAvg.append((filtered[0] + filtered[1]) // 2)
+        movingAvg.extend(map(lambda back, mid, front: (back + mid + front) // 3, filtered[0:], filtered[1:], filtered[2:]))
+        movingAvg.append((filtered[-2] + filtered[-1]) // 2)
 
-        barValues = movingAvg
+        barValues = list(map(int, movingAvg))
 
     return barValues
