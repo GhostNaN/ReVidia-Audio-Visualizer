@@ -23,7 +23,7 @@ install.bat
 #### Note: Run the installer again if you move the file at all
 
 ## Important Notes:
-#### This program ONLY accepts input(mics) audio streams for now
+#### This program ONLY accepts input audio streams
 
 If you are using **Windows** you can optionally install VB-CABLE:
 - https://www.vb-audio.com/Cable/index.htm#DownloadCable  
