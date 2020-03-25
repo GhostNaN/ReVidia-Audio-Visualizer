@@ -28,6 +28,9 @@ General:
   Otherwise if you use JACK normally like below, then just pick the JACK input.
   https://forum.manjaro.org/t/how-to-replace-pulseaudio-with-jack-jack-and-pulseaudio-together-as-friend/2086
   
+- By default the bar height will auto level to the data. 
+  To normalize simply change the bar height manually.
+  
 - The FPS combo box is the global timer. So if you set it higher, everything will run faster and vice versa.
 
 - The icon is just my profile pic as a place holder until I come with a better custom icon.
@@ -50,9 +53,10 @@ Main|Audio Buffer - Audio frames in the buffer. The higher the number the higher
 Design|Color|Bar Color/Background Color/Outline Color - Allows to pick color and alpha(transparency) [0-2]*
 Design|Color|Rainbow - Creates a rainbow effect to the colors of Bars/(Outline Only) based on current Bar Color [1]
 Design|Gradient - Popup for making a gradient using double left click to make a point and right click to delete a point [0-2]*
-Design|Dimensions - Brings up sliders to change the dimensions and look of the bars. [0-5]**
+Design|Auto Level - (On by default) Auto scale the bar height to the data, manually adjust bar height to disable [0]*
+Design|Dimensions - Brings up sliders to change the dimensions and look of the bars [0-5]**
 Design|Illuminate - Scales the alpha cap of the bars [2]
-Design|Outline Only - If Out Width is more than 0 it will only show the outline. [0]
+Design|Outline Only - If Out Width is more than 0 it will only show the outline [0]
 Design|Cutout - Instead of drawing the bars it will "cut" the background instead [2]
 
 Stats|Deadline - Tells you the percentage of frames that are meeting the frame time(FPS) deadline [0-1]
@@ -71,7 +75,8 @@ Stats|Notes - Places notes to the closest given frequency plot [4]
   
 Shortcuts:
 
-Scroll - Change Bar height on the fly
+Scroll - Change bar height on the fly
+Right-Click-Drag - Moves the window around
 Shift - Press once to hide toolbar, Once more to hide the borders and then on more time to bring up the borders and the toolbar again.
 Esc - Close program 
 
