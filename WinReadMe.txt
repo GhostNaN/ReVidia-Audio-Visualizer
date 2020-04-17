@@ -52,6 +52,9 @@ General:
   If you like to make the background disappear go into Design|Color|Background Color
   and change the alpha channel to 0. Then press SHIFT twice. 
   Press shift once more while on the window to make it reappear.
+  
+- By default the bar height will auto level to the data. 
+  To normalize simply change the bar height manually.
 
 - The FPS combo box is the global timer. So if you set it higher, everything will run faster and vice versa.
   And due to windows sub par timings, setting a high FPS is just a mere suggestion.
@@ -78,6 +81,7 @@ Main|Audio Buffer - Audio frames in the buffer. The higher the number the higher
 Design|Color|Bar Color/Background Color/Outline Color - Allows to pick color and alpha(transparency) [0-2]*
 Design|Color|Rainbow - Creates a rainbow effect to the colors of Bars/(Outline Only) based on current Bar Color [1]
 Design|Gradient - Popup for making a gradient using double left click to make a point and right click to delete a point [0-2]*
+Design|Auto Level - (On by default) Auto scale the bar height to the data, manually adjust bar height to disable [0]*
 Design|Dimensions - Brings up sliders to change the dimensions and look of the bars. [0-5]**
 Design|Illuminate - Scales the alpha cap of the bars [2]
 Design|Outline Only - If Out Width is more than 0 it will only show the outline. [0]
@@ -100,6 +104,7 @@ Stats|Notes - Places notes to the closest given frequency plot [4]
 Shortcuts:
 
 Scroll - Change Bar height on the fly
+Right-Click-Drag - Moves the window around
 Shift - Press once to hide toolbar, Once more to hide the borders and then on more time to bring up the borders and the toolbar again.
 Esc - Close program 
 
