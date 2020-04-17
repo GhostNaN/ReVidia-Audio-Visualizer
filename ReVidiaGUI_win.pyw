@@ -46,7 +46,7 @@ class ReVidiaMain(QMainWindow):
         self.barWidth = 14
         self.gapWidth = 6
         self.outlineSize = 0
-        self.barHeight = 0.001
+        self.barHeight = 0
         self.wholeWidth = self.barWidth + self.gapWidth
         self.outline = 0
         self.cutout = 0
@@ -94,8 +94,8 @@ class ReVidiaMain(QMainWindow):
         deviceDialog.setToolTip('Select Audio Device')
         deviceDialog.triggered.connect(self.getDevice)
 
-        scaleDialog = QAction('Scale', self)
-        scaleDialog.setToolTip('Modify the Scale')
+        scaleDialog = QAction('Freq Scale', self)
+        scaleDialog.setToolTip('Modify the Frequency Scale')
         scaleDialog.triggered.connect(self.getScaleDialog)
 
         splitCheck = QAction('Split Audio', self)
@@ -107,7 +107,7 @@ class ReVidiaMain(QMainWindow):
         curvyMenu = QMenu('Curviness', self)
         curvyMenu.setToolTip('Set How Much the Bars Curve')
         curvySettings = ['No Curves', 'Sharp', 'Narrow', 'Loose', 'Flat']
-        curveList = [0, (5,2), (11,3), (23,4), (43,5)]
+        curveList = [0, (0.05, 3), (0.15, 3), (0.30, 3), (1, 3)]  # [0, (5,3), (11,3), (23,3), (43,3)]
         self.curvyDict = {}
         for f in range(5):
             curve = curveList[f]
@@ -116,6 +116,7 @@ class ReVidiaMain(QMainWindow):
             self.curvyDict[str(curve)].triggered.connect(lambda checked, index=curve: self.setCurve(index))
             curvyMenu.addAction(self.curvyDict[str(curve)])
         self.curvyDict[str(self.curvy)].setChecked(True)
+        self.curvyDict[str(self.curvy)].trigger()
 
         interpMenu = QMenu('Interpolation', self)
         interpMenu.setToolTip('Set Interp Amount (Noise)')
@@ -130,6 +131,7 @@ class ReVidiaMain(QMainWindow):
             self.interpDict[str(interp)].triggered.connect(lambda checked, index=interp: self.setInterp(index))
             interpMenu.addAction(self.interpDict[str(interp)])
         self.interpDict[str(self.interp)].setChecked(True)
+        self.interpDict[str(self.interp)].trigger()
 
         bufferMenu = QMenu('Audio Buffer', self)
         bufferMenu.setToolTip('Set the Audio Buffer Size')
@@ -142,6 +144,7 @@ class ReVidiaMain(QMainWindow):
             bufferMenu.addAction(self.audioBufferDict[str(audioRate)])
             audioRate *= 2
         self.audioBufferDict[str(self.audioBuffer)].setChecked(True)
+        self.audioBufferDict[str(self.audioBuffer)].trigger()
 
         colorMenu = QMenu('Color', self)
         colorMenu.setToolTip('Select Colors and Transparency')
@@ -164,6 +167,10 @@ class ReVidiaMain(QMainWindow):
         gradDialog = QAction('Gradient', self)
         gradDialog.setToolTip('Create a Gradient')
         gradDialog.triggered.connect(self.getGradDialog)
+
+        autoLevel = QAction('Auto Level', self)
+        autoLevel.setToolTip('Auto Scale the Bar Height to Fit Data')
+        autoLevel.triggered.connect(self.setAutoLevel)
 
         sizesCheck = QAction('Dimensions', self)
         sizesCheck.setCheckable(True)
@@ -247,6 +254,7 @@ class ReVidiaMain(QMainWindow):
         mainMenu.addMenu(bufferMenu)
         designMenu.addMenu(colorMenu)
         designMenu.addAction(gradDialog)
+        designMenu.addAction(autoLevel)
         designMenu.addAction(sizesCheck)
         designMenu.addAction(lumenCheck)
         designMenu.addAction(outlineCheck)
@@ -257,12 +265,7 @@ class ReVidiaMain(QMainWindow):
         statsMenu.addAction(dbBarCheck)
         statsMenu.addAction(self.freqsCheck)
         statsMenu.addAction(self.notesCheck)
-
-        if reload:  # Manual setting trigger after a reload
-            self.curvyDict[str(self.curvy)].trigger()
-            self.interpDict[str(self.interp)].trigger()
-            self.audioBufferDict[str(self.audioBuffer)].trigger()
-
+        
         self.setWindowFlags(self.windowFlags() & ~Qt.FramelessWindowHint)   # Fixes Windows window bug
         self.show()
         self.starterVars()
@@ -305,7 +308,7 @@ class ReVidiaMain(QMainWindow):
         # Create separate process for audio data processing
         self.P1 = mp.Process(target=ReVidia_win.processData, args=(
             self.syncLock, dataTime, self.proTime, self.dataArray, dataArray2, self.proArray, self.proArray2, self.proQ, self.dataQ,
-            self.frameRate, self.audioBuffer, self.plotsList, self.split, self.curvy, self.interp))
+            self.frameRate, self.audioBuffer, self.plotsList, self.split, self.curvyValue, self.interp))
 
         # Separate main thread from event loop
         self.mainThread = th.Thread(target=self.mainLoop)
@@ -324,6 +327,14 @@ class ReVidiaMain(QMainWindow):
             self.splitBarValues = self.proArray2[:self.barsAmt]
             if self.checkDB:
                 self.dataList = self.dataArray[:self.audioBuffer]
+
+            # Resize Data with user's defined height or the data's height
+            if not self.barHeight:
+                self.dataCap = max(self.barValues)
+            else:
+                self.dataCap = self.barHeight
+            self.barValues = ReVidia_win.rescaleData(self.barValues, self.dataCap, self.size().height())
+            self.splitBarValues = ReVidia_win.rescaleData(self.splitBarValues, self.dataCap, self.size().height())
 
             if not self.P1.is_alive():
                 print('RIP Audio Processor, shutting down.')
@@ -388,6 +399,19 @@ class ReVidiaMain(QMainWindow):
         self.plotsList = list(map(int, ReVidia_win.dataPlotter(plots, 1, self.audioBuffer // 2)))
         if hasattr(self, 'proQ'):
             self.proQ.put(['plots', self.plotsList])
+
+    def updateBarsAmt(self):
+        if hasattr(self, 'barsAmt'):
+            self.barsAmt = self.size().width() // self.wholeWidth
+
+            if self.barsAmt > self.audioBuffer:   # Max of buffer to avoid crash
+                self.barsAmt = self.audioBuffer
+            if self.barsAmt < 2: self.barsAmt = 2   # Min of 2 point to avoid crash
+
+            if self.curvy:
+                self.setCurve(self.curvy)
+
+            self.updatePlots()
 
     def setTextPalette(self):
         if not hasattr(self, 'textPalette'):
@@ -456,12 +480,12 @@ class ReVidiaMain(QMainWindow):
             xPos = (self.gapWidth // 2)
             yPos = 0
             for y in range(len(self.barValues)):
-                ySizeV = int(self.barValues[y] * self.barHeight)
+                ySizeV = self.barValues[y]
                 ySize = self.size().height() - ySizeV
                 painter.drawRect(xPos - self.gapWidth, yPos, self.gapWidth, self.size().height())   # Gap bar
 
                 if self.split:
-                    ySplitV = int(self.splitBarValues[y] * self.barHeight)
+                    ySplitV = self.splitBarValues[y]
                     ySize = (self.size().height() // 2) - ySizeV
                     painter.drawRect(xPos, yPos, xSize, ySize)  # Top background
                     ySize = (self.size().height() // 2) - ySplitV
@@ -493,20 +517,16 @@ class ReVidiaMain(QMainWindow):
 
         if len(self.barValues) == self.barsAmt:
             for y in range(len(self.barValues)):
-                ySize = int(self.barValues[y] * self.barHeight)
+                ySize = self.barValues[y]
 
                 if self.split and len(self.splitBarValues) == self.barsAmt:
                     if ySize > viewHeight // 2:
                         ySize = viewHeight // 2
-                    ySplitV = int(self.splitBarValues[y] * self.barHeight)
+                    ySplitV = self.splitBarValues[y]
                     if ySplitV > viewHeight // 2:
                         ySplitV = viewHeight // 2
                     yPos = (self.size().height() // 2) + ySplitV
                     ySize = ySplitV + ySize
-                # Place boundary
-                if ySize > viewHeight:
-                    ySize = viewHeight
-                if ySize < 0: ySize = 0
 
                 if self.lumen:
                     color = barColor
@@ -754,14 +774,23 @@ class ReVidiaMain(QMainWindow):
         self.proQ.put(['split', self.split])
 
     def setCurve(self, index):
-        self.curvy = index
+        self.curvy = index  # Assign Dict value
+        if index:
+            window = int(self.barsAmt * index[0])
+            if (window % 2) == 0: window += 1
+            if window < 5: window = 5
+            self.curvyValue = (window, index[1])  # Only used to init process
+        else:
+            self.curvyValue = 0
+
         for f in self.curvyDict:
             if f != str(index):
                 self.curvyDict[str(f)].setChecked(False)
             else:
                 self.curvyDict[str(f)].setChecked(True)
 
-        self.proQ.put(['curvy', self.curvy])
+        if hasattr(self, 'proQ'):
+            self.proQ.put(['curvy', self.curvyValue])
 
     def setFrameRate(self, value):
         self.frameRate = value
@@ -779,7 +808,8 @@ class ReVidiaMain(QMainWindow):
             else:
                 self.interpDict[str(f)].setChecked(True)
 
-        self.proQ.put(['interp', self.interp])
+        if hasattr(self, 'proQ'):
+            self.proQ.put(['interp', self.interp])
 
     def setAudioBuffer(self, index):
         self.audioBuffer = index
@@ -790,9 +820,11 @@ class ReVidiaMain(QMainWindow):
             else:
                 self.audioBufferDict[str(f)].setChecked(True)
 
-        self.dataQ.put(['buffer', self.audioBuffer])
-        self.proQ.put(['buffer', self.audioBuffer])
-        self.updatePlots()
+        if hasattr(self, 'dataQ'):
+            # Update before buffer
+            self.updateBarsAmt()
+            self.dataQ.put(['buffer', self.audioBuffer])
+            self.proQ.put(['buffer', self.audioBuffer])
 
     def setBarColor(self):
         self.barColor = QColorDialog.getColor(self.barColor,None,None,QColorDialog.ShowAlphaChannel)
@@ -833,8 +865,14 @@ class ReVidiaMain(QMainWindow):
                                      self.size().height() // 2)
         self.gradDialog.show()
 
+    def setAutoLevel(self):
+        self.barHeight = 0
+
     def showBarSliders(self, on):
         if on:
+            if hasattr(self, 'showBarWidth'):
+                self.showBarSliders(False)
+
             self.showBarText = QLabel(self)
             self.showBarText.setText('Bar Width ' + str(self.barWidth))
             self.showBarText.setGeometry(5, 25, 100, 20)
@@ -868,7 +906,7 @@ class ReVidiaMain(QMainWindow):
             self.showOutWidth.show()
 
             self.showHeightText = QLabel(self)
-            self.showHeightText.setText('Height \n' + str(round(self.barHeight * 1000, 2)))
+            self.showHeightText.setText('Height \n' + str(int(self.dataCap **(1/2))))
             self.showHeightText.setGeometry(30, 65, 50, 40)
             self.showHeightText.show()
             self.showHeightSlider = QSlider(Qt.Vertical, self)
@@ -900,8 +938,7 @@ class ReVidiaMain(QMainWindow):
     def setBarSize(self, value):
         self.barWidth = value
         self.wholeWidth = self.barWidth + self.gapWidth
-        self.barsAmt = self.size().width() // self.wholeWidth
-        self.updatePlots()
+        self.updateBarsAmt()
         if self.outlineSize > self.barWidth // 2:
             self.setOutlineSize(self.outlineSize)
 
@@ -910,8 +947,7 @@ class ReVidiaMain(QMainWindow):
     def setGapSize(self, value):
         self.gapWidth = value
         self.wholeWidth = self.barWidth + self.gapWidth
-        self.barsAmt = self.size().width() // self.wholeWidth
-        self.updatePlots()
+        self.updateBarsAmt()
 
         self.showGapText.setText('Gap Width ' + str(self.gapWidth))
 
@@ -925,21 +961,31 @@ class ReVidiaMain(QMainWindow):
         self.showOutlineText.setText('Out Width ' + str(self.outlineSize))
 
     def setBarHeight(self):
+        if not self.barHeight:
+            self.barHeight = self.dataCap
 
         value = self.showHeightSlider.value()
         if value > 0:
             value = 1 + value / (self.frameRate * 10)
-            if self.barHeight < 10:
-                self.barHeight *= value
+            if self.barHeight > 1:
+                self.barHeight /= value
+            else:
+                self.barHeight = 1
+
         elif value < 0:
             value = 1 + -value / (self.frameRate * 10)
-            if self.barHeight > 0.000001:
-                self.barHeight /= value
+            if self.barHeight < 10**10:
+                self.barHeight *= value
+            else:
+                self.barHeight = 10**10
 
-        self.showHeightText.setText('Height \n' + str(round(self.barHeight * 1000, 2)))
+        self.showHeightText.setText('Height \n' + str(int(self.barHeight**(1/2))))
 
     def showLumenSlider(self, on):
         if on:
+            if hasattr(self, 'lumenSlider'):
+                self.showLumenSlider(False)
+
             self.showLumenText = QLabel(self)
             self.showLumenText.setText('Light Limit \n' + str(self.lumen) + '%')
             self.showLumenText.setGeometry(30, 235, 75, 40)
@@ -1025,9 +1071,11 @@ class ReVidiaMain(QMainWindow):
 
             if self.menuToggle == 0:
                 self.menuToggle = 1
+
                 self.menuBar().hide()
                 self.fpsSpinBox.hide()
                 return
+
             if self.menuToggle == 1:
                 self.menuToggle = 2
                 self.oldX = self.x()
@@ -1035,6 +1083,7 @@ class ReVidiaMain(QMainWindow):
                 self.setWindowFlags(Qt.FramelessWindowHint)
                 self.show()
                 return
+
             if self.menuToggle == 2:
                 self.menuToggle = 0
                 self.setWindowFlags(self.windowFlags() & ~Qt.FramelessWindowHint)
@@ -1044,23 +1093,43 @@ class ReVidiaMain(QMainWindow):
                 self.move(self.oldX, self.oldY)  # Fixes a weird bug with the window
                 return
 
+    def mousePressEvent(self, event):
+        if event.button() == 2:  # Right click
+            self.mouseGrab = [event.x(), event.y()]
+
+    def mouseMoveEvent(self, event):
+        if hasattr(self, 'mouseGrab'):
+            xPos = event.globalX() - self.mouseGrab[0]
+            yPos = event.globalY() - self.mouseGrab[1]
+            self.move(xPos, yPos)
+
+    def mouseReleaseEvent(self, event):
+        if hasattr(self, 'mouseGrab'):
+            del self.mouseGrab
+
     # Allows to adjust bars height by scrolling on window
     def wheelEvent(self, event):
         mouseDir = event.angleDelta().y()
-        if mouseDir > 0:
-            if self.barHeight < 10:
+
+        if not self.barHeight:
+            self.barHeight = self.dataCap
+
+        if mouseDir < 0:
+            if self.barHeight < 10**10:
                 self.barHeight *= 1.5
-        elif mouseDir < 0:
-            if self.barHeight > 0.000001:
+            else:
+                self.barHeight = 10**10
+        elif mouseDir > 0:
+            if self.barHeight > 1:
                 self.barHeight /= 1.5
+            else:
+                self.barHeight = 1
 
         if hasattr(self, 'showHeightText'):
-            self.showHeightText.setText('Height \n' + str(round(self.barHeight * 1000, 2)))
+            self.showHeightText.setText('Height \n' + str(int(self.barHeight**(1/2))))
 
     def resizeEvent(self, event):
-        if hasattr(self, 'barsAmt'):
-            self.barsAmt = self.size().width() // self.wholeWidth
-            self.updatePlots()
+        self.updateBarsAmt()
 
     # Makes sure the processes are not running in the background after closing
     def closeEvent(self, event):
@@ -1068,6 +1137,11 @@ class ReVidiaMain(QMainWindow):
             self.mainQ.put(1)   # End main thread
             self.P1.terminate()   # Kill Processes
             self.T1.terminate()
+            if hasattr(self, 'cleanLines'):  # Clean up ~/.asoundrc
+                import os
+                alsaFolder = os.getenv("HOME") + '/.asoundrc'
+                with open(alsaFolder, 'w') as alsaConf:
+                    alsaConf.writelines(self.cleanLines)
         except RuntimeError:
             print('Some processes won\'t close properly, closing anyway.')
 
