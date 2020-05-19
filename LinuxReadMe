@@ -29,9 +29,12 @@ General:
   https://forum.manjaro.org/t/how-to-replace-pulseaudio-with-jack-jack-and-pulseaudio-together-as-friend/2086
   
 - By default the bar height will auto level to the data. 
-  To normalize simply change the bar height manually.
+  To normalize simply change the bar height manually or by toggling Design|Auto Level to off.
   
 - The FPS combo box is the global timer. So if you set it higher, everything will run faster and vice versa.
+
+- Two profiles are include for fun. One is the "Monstercat-Lite", which is my best approximation of the Monstercat visualizer.
+  And the other is "Recording" which is a balanced profile for decent audio from the Main|Reverse FFT
 
 - The icon is just my profile pic as a place holder until I come with a better custom icon.
 
@@ -44,6 +47,8 @@ Use Stats|Deadline to gauge performance.
 On a scale from [0] being negligible/none to [5] being the worst performance cost of settings:
 
 Main|Profiles - Save, Load and Delete profiles that save all your settings [0]
+Main|Device - Select a different audio device [0]
+Main|Reverse FFT - Record and playback how the visualizer sounds [5]
 Main|Split Audio - Splits the audio into left(top half) and right(bottom half) channels [4]
 Main|Scale - Popup to adjust scaling curves using dragging and scrolling of points [0] 
 Main|Curviness - Curves/Smooths the bars with a Savitzky Golay Filter & Moving Avg. [1] 
@@ -52,10 +57,10 @@ Main|Audio Buffer - Audio frames in the buffer. The higher the number the higher
 
 Design|Color|Bar Color/Background Color/Outline Color - Allows to pick color and alpha(transparency) [0-2]*
 Design|Color|Rainbow - Creates a rainbow effect to the colors of Bars/(Outline Only) based on current Bar Color [1]
-Design|Gradient - Popup for making a gradient using double left click to make a point and right click to delete a point [0-2]*
-Design|Auto Level - (On by default) Auto scale the bar height to the data, manually adjust bar height to disable [0]*
-Design|Dimensions - Brings up sliders to change the dimensions and look of the bars [0-5]**
 Design|Illuminate - Scales the alpha cap of the bars [2]
+Design|Gradient - Popup for making a gradient using double left click to make a point and right click to delete a point [0-2]*
+Design|Auto Level - (On by default) Auto scale the bar height to the data, manually adjusting the bar height will disable [0]*
+Design|Dimensions - Brings up sliders to change the dimensions and look of the bars [0-5]**
 Design|Outline Only - If Out Width is more than 0 it will only show the outline [0]
 Design|Cutout - Instead of drawing the bars it will "cut" the background instead [2]
 
