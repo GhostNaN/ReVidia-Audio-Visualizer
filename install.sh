@@ -1,7 +1,7 @@
 #!/bin/sh
 
-# Create venv required
-python -m venv venv
+# Create venv and get missing dependencies 
+python -m venv venv --system-site-packages
 source venv/bin/activate
 pip install -r venv/requirements.txt
 
@@ -19,7 +19,7 @@ Type=Application
 Comment='Audio Visualizer'
 Terminal=false
 Icon=$(pwd)/docs/REV.png
-Exec=ReVidiaGUI.py
+Exec=bash -c '"$(dirname "$1")"/ReVidiaGUI.py' dummy %k
 Path=$(pwd)
 " > ReVidia.desktop
 

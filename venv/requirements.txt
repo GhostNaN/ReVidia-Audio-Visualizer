@@ -1,6 +1,6 @@
-cffi==1.13.2
-numpy==1.18.1
-PyAudio==0.2.11
-pycparser==2.19
-PyQt5==5.14.0
-PyQt5-sip==12.7.0
+cffi
+numpy
+PyAudio
+pycparser
+PyQt5
+PyQt5-sip
