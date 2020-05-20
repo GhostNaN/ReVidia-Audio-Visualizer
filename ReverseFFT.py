@@ -1,6 +1,5 @@
 #!venv2/bin/python
 
-import ReVidia
 import numpy as np
 import wave
 
