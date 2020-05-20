@@ -1,5 +1,5 @@
-cffi==1.13.2
-numpy==1.18.1
-pycparser==2.19
-PyQt5==5.14.1
-PyQt5-sip==12.7.0
+cffi
+numpy
+pycparser
+PyQt5
+PyQt5-sip

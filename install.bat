@@ -1,5 +1,5 @@
 :: Create venv required
-python -m venv venv
+python -m venv venv --system-site-packages
 call venv\Scripts\activate
 
 :: Install dependencies
