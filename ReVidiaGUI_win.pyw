@@ -1,6 +1,7 @@
 #!venv/Scripts/pythonw
 # -*- coding: utf-8 -*-
 
+import ReverseFFT
 import ReVidia_win
 import sys
 import time
@@ -40,8 +41,8 @@ class ReVidiaMain(QMainWindow):
         self.backgroundColor = QColor(50, 50, 50, 255)  # R, G, B, Alpha 0-255
         self.barColor = QColor(255, 255, 255, 255)
         self.outlineColor = QColor(0, 0, 0)
-        self.gradient = 0
         self.lumen = 0
+        self.gradient = 0
         self.checkRainbow = 0
         self.barWidth = 14
         self.gapWidth = 6
@@ -70,9 +71,9 @@ class ReVidiaMain(QMainWindow):
         self.setTextPalette()
         if not reload:
             self.getDevice(True)  # Get Device before starting
+            self.mainBar = self.menuBar()
 
         # Setup menu bar
-        self.mainBar = self.menuBar()
         mainMenu = self.mainBar.addMenu('Main')
         mainMenu.setToolTipsVisible(True)
         designMenu = self.mainBar.addMenu('Design')
@@ -93,6 +94,10 @@ class ReVidiaMain(QMainWindow):
         deviceDialog = QAction('Device', self)
         deviceDialog.setToolTip('Select Audio Device')
         deviceDialog.triggered.connect(self.getDevice)
+
+        FFTAudDialog = QAction('Reverse FFT', self)
+        FFTAudDialog.setToolTip('Listen to the Sound of the Visualizer')
+        FFTAudDialog.triggered.connect(self.getFFTAudDialog)
 
         scaleDialog = QAction('Freq Scale', self)
         scaleDialog.setToolTip('Modify the Frequency Scale')
@@ -164,23 +169,35 @@ class ReVidiaMain(QMainWindow):
         colorMenu.addAction(outColorDialog)
         colorMenu.addAction(rainbowCheck)
 
+        lumenMenu = QMenu('Illuminate', self)
+        lumenMenu.setToolTip('Change the Bars Alpha Scale')
+        lumenSettings = ['None', '1/4', '1/2', '3/4', 'Whole']
+        lumenList = [0, 25, 50, 75, 100]
+        self.lumenDict = {}
+        for f in range(5):
+            lumen = lumenList[f]
+            self.lumenDict[str(lumen)] = QAction(lumenSettings[f], self)
+            self.lumenDict[str(lumen)].setCheckable(True)
+            self.lumenDict[str(lumen)].triggered.connect(lambda checked, index=lumen: self.setLumen(index))
+            lumenMenu.addAction(self.lumenDict[str(lumen)])
+        self.lumenDict[str(self.lumen)].setChecked(True)
+        self.lumenDict[str(self.lumen)].trigger()
+
         gradDialog = QAction('Gradient', self)
         gradDialog.setToolTip('Create a Gradient')
         gradDialog.triggered.connect(self.getGradDialog)
 
-        autoLevel = QAction('Auto Level', self)
-        autoLevel.setToolTip('Auto Scale the Bar Height to Fit Data')
-        autoLevel.triggered.connect(self.setAutoLevel)
+        self.autoLevel = QAction('Auto Level', self)
+        self.autoLevel.setCheckable(True)
+        self.autoLevel.setToolTip('Auto Scale the Bar Height to Fit Data')
+        self.autoLevel.triggered.connect(self.setAutoLevel)
+        if not self.barHeight:
+            self.autoLevel.setChecked(True)
 
         sizesCheck = QAction('Dimensions', self)
         sizesCheck.setCheckable(True)
         sizesCheck.setToolTip('Change the Bars Dimensions')
         sizesCheck.toggled.connect(self.showBarSliders)
-
-        lumenCheck = QAction('Illuminate', self)
-        lumenCheck.setCheckable(True)
-        lumenCheck.setToolTip('Change the Bars Alpha Scale')
-        lumenCheck.triggered.connect(self.showLumenSlider)
 
         outlineCheck = QAction('Outline Only', self)
         outlineCheck.setCheckable(True)
@@ -233,30 +250,25 @@ class ReVidiaMain(QMainWindow):
         self.fpsSpinBox = QSpinBox()
         self.fpsSpinBox.setRange(1, 999)
         self.fpsSpinBox.setSuffix(' FPS')
-        self.fpsSpinBox.setMaximumWidth(70)
-        self.fpsSpinBox.setMaximumHeight(20)
+        self.fpsSpinBox.setMaximumSize(100, 100)
         self.fpsSpinBox.valueChanged.connect(self.setFrameRate)
         self.fpsSpinBox.setValue(self.frameRate)
         self.fpsSpinBox.setKeyboardTracking(False)
         self.fpsSpinBox.setFocusPolicy(Qt.ClickFocus)
-        fpsDock = QDockWidget(self)
-        fpsDock.move(150, -21)
-        fpsDock.setFeatures(QDockWidget.NoDockWidgetFeatures)
-        fpsDock.setWidget(self.fpsSpinBox)
-        fpsDock.show()
 
         mainMenu.addMenu(profilesMenu)
         mainMenu.addAction(deviceDialog)
+        mainMenu.addAction(FFTAudDialog)
         mainMenu.addAction(scaleDialog)
         mainMenu.addAction(splitCheck)
         mainMenu.addMenu(curvyMenu)
         mainMenu.addMenu(interpMenu)
         mainMenu.addMenu(bufferMenu)
         designMenu.addMenu(colorMenu)
+        designMenu.addMenu(lumenMenu)
         designMenu.addAction(gradDialog)
-        designMenu.addAction(autoLevel)
+        designMenu.addAction(self.autoLevel)
         designMenu.addAction(sizesCheck)
-        designMenu.addAction(lumenCheck)
         designMenu.addAction(outlineCheck)
         designMenu.addAction(cutoutCheck)
         statsMenu.addAction(deadlineCheck)
@@ -265,6 +277,15 @@ class ReVidiaMain(QMainWindow):
         statsMenu.addAction(dbBarCheck)
         statsMenu.addAction(self.freqsCheck)
         statsMenu.addAction(self.notesCheck)
+
+        menuWidget = QWidget(self)
+        menu = QHBoxLayout(menuWidget)
+
+        menu.addWidget(self.mainBar)
+        menu.addWidget(self.fpsSpinBox)
+        menu.addStretch(10)
+
+        self.setMenuWidget(menuWidget)
         
         self.setWindowFlags(self.windowFlags() & ~Qt.FramelessWindowHint)   # Fixes Windows window bug
         self.show()
@@ -284,6 +305,7 @@ class ReVidiaMain(QMainWindow):
         self.paintBusy = 0
         self.paintTime = 0
         self.paintDelay = (1 / self.frameRate)
+        self.reverseFFT = 0
 
     def startProcesses(self):
         self.blockLock = th.Lock()
@@ -360,6 +382,29 @@ class ReVidiaMain(QMainWindow):
                 break
 
     def updateObjects(self):
+        if self.reverseFFT:
+            if not hasattr(self, 'waveLoopTime'):
+                self.waveLoopTime = time.time()
+            waveTime = time.time() - self.waveLoopTime
+            self.waveLoopTime = time.time()
+
+            if not hasattr(self, 'waveFile'):
+                self.waveFile = ReverseFFT.createFile(self.sampleRate)
+                self.oldVolList = []
+                self.oldTimes = []
+                freqList = ReVidia_win.assignFreq(self.audioBuffer, self.sampleRate, self.plotsList)
+                import random
+                # Insert a Tiny bit of random to prevent overlap in freq's
+                self.waveFreqList = list(map(lambda freq: freq + random.uniform(-0.1, 0.1), freqList))
+
+            self.oldVolList, self.oldTimes = ReverseFFT.start(self.waveFile, self.sampleRate, self.barValues, waveTime,
+                                                              self.size().height(), self.oldVolList, self.oldTimes, self.waveFreqList)
+        else:
+            if hasattr(self, 'waveFile'):
+                self.waveFile.close()
+                del self.waveFile
+                del self.waveLoopTime
+
         if self.checkDeadline:
             if not hasattr(self, 'loopTime'):   # Start loop here so percent starts at 0
                 self.loopTime = time.time()
@@ -373,11 +418,11 @@ class ReVidiaMain(QMainWindow):
             self.loopTime = time.time()
 
         # Update height slider
-        if hasattr(self, 'showHeightSlider'):
-            if self.showHeightSlider.isSliderDown():
+        if hasattr(self, 'heightSlider'):
+            if self.heightSlider.isSliderDown():
                 self.setBarHeight()
             else:
-                self.showHeightSlider.setValue(0)
+                self.heightSlider.setValue(0)
 
         if self.checkRainbow:
             self.setRainbow(1)
@@ -529,7 +574,7 @@ class ReVidiaMain(QMainWindow):
                     ySize = ySplitV + ySize
 
                 if self.lumen:
-                    color = barColor
+                    color = QColor(barColor)
                     lumBright = int(ySize * lumReigen)
                     if lumBright > 255: lumBright = 255
                     if not self.gradient:
@@ -758,6 +803,11 @@ class ReVidiaMain(QMainWindow):
 
         elif firstRun: sys.exit()
 
+    def getFFTAudDialog(self):
+        self.fftDialog = FFTDialog(self)
+        self.fftDialog.setGeometry(self.pos().x(), self.pos().y(), 350, 100)
+        self.fftDialog.show()
+
     def getScaleDialog(self):
         self.scaleDialog = ScaleDialog(self)
         self.scaleDialog.setMinimumSize(150, 100)
@@ -857,6 +907,15 @@ class ReVidiaMain(QMainWindow):
             self.checkRainbow = 0
             del self.rainbowHue
 
+    def setLumen(self, index):
+        self.lumen = index
+
+        for f in self.lumenDict:
+            if int(f) != index:
+                self.lumenDict[str(f)].setChecked(False)
+            else:
+                self.lumenDict[str(f)].setChecked(True)
+
     def getGradDialog(self):
         self.gradDialog = GradientDialog(self)
         self.gradDialog.setMinimumSize(150, 100)
@@ -865,75 +924,75 @@ class ReVidiaMain(QMainWindow):
                                      self.size().height() // 2)
         self.gradDialog.show()
 
-    def setAutoLevel(self):
-        self.barHeight = 0
+    def setAutoLevel(self, on):
+        if on:
+            self.barHeight = 0
+        else:
+            self.barHeight = self.dataCap
 
     def showBarSliders(self, on):
         if on:
-            if hasattr(self, 'showBarWidth'):
+            if hasattr(self, 'barSizeDock'):
                 self.showBarSliders(False)
 
-            self.showBarText = QLabel(self)
-            self.showBarText.setText('Bar Width ' + str(self.barWidth))
-            self.showBarText.setGeometry(5, 25, 100, 20)
-            self.showBarText.show()
-            self.showBarWidth = QSlider(Qt.Horizontal, self)
-            self.showBarWidth.setMinimum(1)
-            self.showBarWidth.setValue(self.barWidth)
-            self.showBarWidth.setGeometry(0, 45, 85, 20)
-            self.showBarWidth.valueChanged.connect(self.setBarSize)
-            self.showBarWidth.show()
+            self.barWidthText = QLabel(self)
+            self.barWidthText.setText('Bar Width ' + str(self.barWidth))
+            barWidthSlider = QSlider(Qt.Horizontal, self)
+            barWidthSlider.setMinimum(1)
+            barWidthSlider.setValue(self.barWidth)
+            barWidthSlider.valueChanged.connect(self.setBarSize)
 
-            self.showGapText = QLabel(self)
-            self.showGapText.setText('Gap Width ' + str(self.gapWidth))
-            self.showGapText.setGeometry(105, 25, 100, 20)
-            self.showGapText.show()
-            self.showGapWidth = QSlider(Qt.Horizontal, self)
-            self.showGapWidth.setValue(self.gapWidth)
-            self.showGapWidth.setGeometry(100, 45, 85, 20)
-            self.showGapWidth.valueChanged.connect(self.setGapSize)
-            self.showGapWidth.show()
+            self.gapWidthText = QLabel(self)
+            self.gapWidthText.setText('Gap Width ' + str(self.gapWidth))
+            gapWidthSlider = QSlider(Qt.Horizontal, self)
+            gapWidthSlider.setValue(self.gapWidth)
+            gapWidthSlider.valueChanged.connect(self.setGapSize)
 
-            self.showOutlineText = QLabel(self)
-            self.showOutlineText.setText('Out Width ' + str(self.outlineSize))
-            self.showOutlineText.setGeometry(205, 25, 100, 20)
-            self.showOutlineText.show()
-            self.showOutWidth = QSlider(Qt.Horizontal, self)
-            self.showOutWidth.setMaximum(50)
-            self.showOutWidth.setValue(self.outlineSize)
-            self.showOutWidth.setGeometry(200, 45, 85, 20)
-            self.showOutWidth.valueChanged.connect(self.setOutlineSize)
-            self.showOutWidth.show()
 
-            self.showHeightText = QLabel(self)
-            self.showHeightText.setText('Height \n' + str(int(self.dataCap **(1/2))))
-            self.showHeightText.setGeometry(30, 65, 50, 40)
-            self.showHeightText.show()
-            self.showHeightSlider = QSlider(Qt.Vertical, self)
-            self.showHeightSlider.setMinimum(-100)
-            self.showHeightSlider.setMaximum(100)
-            self.showHeightSlider.setValue(0)
-            self.showHeightSlider.setGeometry(0, 70, 20, 150)
-            self.showHeightSlider.valueChanged.connect(self.setBarHeight)
-            self.showHeightSlider.show()
+            self.outlineWidthText = QLabel(self)
+            self.outlineWidthText.setText('Out Width ' + str(self.outlineSize))
+            self.outlineWidthSlider = QSlider(Qt.Horizontal, self)
+            self.outlineWidthSlider.setMaximum(50)
+            self.outlineWidthSlider.setValue(self.outlineSize)
+            self.outlineWidthSlider.valueChanged.connect(self.setOutlineSize)
+
+            self.heightText = QLabel(self)
+            self.heightText.setText('Height \n' + str(int(self.dataCap **(1/2))))
+            self.heightText.setGeometry(30, 65, 50, 40)
+            self.heightSlider = QSlider(Qt.Vertical, self)
+            self.heightSlider.setMinimum(-100)
+            self.heightSlider.setMaximum(100)
+            self.heightSlider.setMinimumSize(0, 150)
+            self.heightSlider.setValue(0)
+            self.heightSlider.valueChanged.connect(self.setBarHeight)
+
+            dimenWidget = QWidget(self)
+
+            mainLayout = QGridLayout(dimenWidget)
+            mainLayout.setHorizontalSpacing(10)
+            mainLayout.setVerticalSpacing(5)
+
+            mainLayout.addWidget(self.heightText, 0, 0, 2, 1, Qt.AlignTop)
+            mainLayout.addWidget(self.barWidthText, 0, 1, Qt.AlignCenter)
+            mainLayout.addWidget(self.gapWidthText, 0, 2, Qt.AlignCenter)
+            mainLayout.addWidget(self.outlineWidthText, 0, 3,Qt.AlignCenter)
+
+            mainLayout.addWidget(self.heightSlider, 2, 0, 4, 0)
+            mainLayout.addWidget(barWidthSlider, 1, 1)
+            mainLayout.addWidget(gapWidthSlider, 1, 2)
+            mainLayout.addWidget(self.outlineWidthSlider, 1, 3)
+
+            self.barSizeDock = QDockWidget(self)
+            self.barSizeDock.setFeatures(QDockWidget.NoDockWidgetFeatures)
+            self.barSizeDock.setTitleBarWidget(QWidget())
+            self.barSizeDock.setWidget(dimenWidget)
+            self.barSizeDock.move(0, 35)
+            self.barSizeDock.show()
+
         else:
             # Clean up
-            self.showBarWidth.close()
-            self.showGapWidth.close()
-            self.showOutWidth.close()
-            self.showHeightSlider.close()
-            self.showBarText.close()
-            self.showGapText.close()
-            self.showOutlineText.close()
-            self.showHeightText.close()
-            del self.showBarWidth
-            del self.showGapWidth
-            del self.showOutWidth
-            del self.showHeightSlider
-            del self.showBarText
-            del self.showGapText
-            del self.showOutlineText
-            del self.showHeightText
+            self.barSizeDock.close()
+            del self.barSizeDock
 
     def setBarSize(self, value):
         self.barWidth = value
@@ -942,29 +1001,30 @@ class ReVidiaMain(QMainWindow):
         if self.outlineSize > self.barWidth // 2:
             self.setOutlineSize(self.outlineSize)
 
-        self.showBarText.setText('Bar Width ' + str(self.barWidth))
+        self.barWidthText.setText('Bar Width ' + str(self.barWidth))
 
     def setGapSize(self, value):
         self.gapWidth = value
         self.wholeWidth = self.barWidth + self.gapWidth
         self.updateBarsAmt()
 
-        self.showGapText.setText('Gap Width ' + str(self.gapWidth))
+        self.gapWidthText.setText('Gap Width ' + str(self.gapWidth))
 
     def setOutlineSize(self, value):
         if value <= self.barWidth // 2:
             self.outlineSize = value
         else:
             self.outlineSize = self.barWidth // 2
-            self.showOutWidth.setValue(self.outlineSize)
+            self.outlineWidthSlider.setValue(self.outlineSize)
 
-        self.showOutlineText.setText('Out Width ' + str(self.outlineSize))
+        self.outlineWidthText.setText('Out Width ' + str(self.outlineSize))
 
     def setBarHeight(self):
         if not self.barHeight:
             self.barHeight = self.dataCap
+            self.autoLevel.setChecked(False)
 
-        value = self.showHeightSlider.value()
+        value = self.heightSlider.value()
         if value > 0:
             value = 1 + value / (self.frameRate * 10)
             if self.barHeight > 1:
@@ -979,33 +1039,7 @@ class ReVidiaMain(QMainWindow):
             else:
                 self.barHeight = 10**10
 
-        self.showHeightText.setText('Height \n' + str(int(self.barHeight**(1/2))))
-
-    def showLumenSlider(self, on):
-        if on:
-            if hasattr(self, 'lumenSlider'):
-                self.showLumenSlider(False)
-
-            self.showLumenText = QLabel(self)
-            self.showLumenText.setText('Light Limit \n' + str(self.lumen) + '%')
-            self.showLumenText.setGeometry(30, 235, 75, 40)
-            self.showLumenText.show()
-            self.lumenSlider = QSlider(Qt.Vertical, self)
-            self.lumenSlider.setMaximum(100)
-            self.lumenSlider.setValue(self.lumen)
-            self.lumenSlider.setGeometry(0, 240, 20, 100)
-            self.lumenSlider.valueChanged.connect(self.setLumen)
-            self.lumenSlider.show()
-        else:
-            self.showLumenText.close()
-            self.lumenSlider.close()
-            del self.showLumenText
-            del self.lumenSlider
-
-    def setLumen(self, value):
-        self.lumen = value
-
-        self.showLumenText.setText('Light Limit \n' + str(self.lumen) + '%')
+        self.heightText.setText('Height \n' + str(int(self.barHeight**(1/2))))
 
     def setOutline(self, on):
         if on:
@@ -1072,7 +1106,7 @@ class ReVidiaMain(QMainWindow):
             if self.menuToggle == 0:
                 self.menuToggle = 1
 
-                self.menuBar().hide()
+                self.mainBar.hide()
                 self.fpsSpinBox.hide()
                 return
 
@@ -1087,7 +1121,7 @@ class ReVidiaMain(QMainWindow):
             if self.menuToggle == 2:
                 self.menuToggle = 0
                 self.setWindowFlags(self.windowFlags() & ~Qt.FramelessWindowHint)
-                self.menuBar().show()
+                self.mainBar.show()
                 self.fpsSpinBox.show()
                 self.show()
                 self.move(self.oldX, self.oldY)  # Fixes a weird bug with the window
@@ -1113,6 +1147,7 @@ class ReVidiaMain(QMainWindow):
 
         if not self.barHeight:
             self.barHeight = self.dataCap
+            self.autoLevel.setChecked(False)
 
         if mouseDir < 0:
             if self.barHeight < 10**10:
@@ -1125,8 +1160,8 @@ class ReVidiaMain(QMainWindow):
             else:
                 self.barHeight = 1
 
-        if hasattr(self, 'showHeightText'):
-            self.showHeightText.setText('Height \n' + str(int(self.barHeight**(1/2))))
+        if hasattr(self, 'heightText'):
+            self.heightText.setText('Height \n' + str(int(self.barHeight**(1/2))))
 
     def resizeEvent(self, event):
         self.updateBarsAmt()
@@ -1145,6 +1180,64 @@ class ReVidiaMain(QMainWindow):
         except RuntimeError:
             print('Some processes won\'t close properly, closing anyway.')
 
+
+class FFTDialog(QMainWindow):
+    def __init__(self, main):
+        super(FFTDialog, self).__init__()
+        self.setWindowTitle('Reverse FFT')
+        self.main = main
+
+        self.intiUI()
+
+    def intiUI(self):
+        buttons = QWidget(self)
+        layout = QHBoxLayout(buttons)
+
+        self.record = QPushButton('Record', self)
+        self.record.setFixedSize(100, 50)
+        self.record.setCheckable(True)
+        self.record.clicked.connect(self.setRecord)
+        layout.addWidget(self.record)
+
+        self.play = QPushButton('Play', self)
+        self.play.setFixedSize(100, 50)
+        self.play.setCheckable(True)
+        self.play.clicked.connect(self.setPlay)
+        layout.addWidget(self.play)
+
+        self.setCentralWidget(buttons)
+
+    def setRecord(self, on):
+        if self.play.isChecked():
+            self.play.click()
+
+        if on:
+            self.record.setText('Recording')
+            self.main.reverseFFT = 1
+        else:
+            self.record.setText('Stopped')
+            self.main.reverseFFT = 0
+
+    def setPlay(self, on):
+        if self.main.reverseFFT:
+            self.record.setText('Stopped')
+            self.record.setChecked(False)
+            self.main.reverseFFT = 0
+
+        if on:
+            self.play.setText('Playing')
+            import subprocess
+            self.player = subprocess.Popen('powershell -windowstyle hidden -c (New-Object Media.SoundPlayer "reverseFFT.wav").PlaySync();')
+        else:
+            self.play.setText('Stopped')
+            self.player.kill()
+            del self.player
+
+    def closeEvent(self, event):
+        # Cleanup
+        self.main.reverseFFT = 0
+        if hasattr(self, 'player'):
+            self.player.kill()
 
 class ScaleDialog(QMainWindow):
     def __init__(self, main):
@@ -1168,6 +1261,7 @@ class ScaleDialog(QMainWindow):
         self.intiUI()
 
     def intiUI(self):
+        self.setPalette(self.main.textPalette)
         mainBar = self.menuBar()
         mainBar.heightForWidth(20)
 
@@ -1186,11 +1280,6 @@ class ScaleDialog(QMainWindow):
         self.startPointSpinBox.setValue(self.startPoint)
         self.startPointSpinBox.setKeyboardTracking(False)
         self.startPointSpinBox.setFocusPolicy(Qt.ClickFocus)
-        startPointDock = QDockWidget(self)
-        startPointDock.move(55, -20)
-        startPointDock.setFeatures(QDockWidget.NoDockWidgetFeatures)
-        startPointDock.setWidget(self.startPointSpinBox)
-        startPointDock.show()
 
         self.midPointSpinBox = QSpinBox()
         self.midPointSpinBox.setRange(0, int(self.main.sampleRate // 2))
@@ -1201,11 +1290,6 @@ class ScaleDialog(QMainWindow):
         self.midPointSpinBox.setValue(self.midPoint)
         self.midPointSpinBox.setKeyboardTracking(False)
         self.midPointSpinBox.setFocusPolicy(Qt.ClickFocus)
-        midPointDock = QDockWidget(self)
-        midPointDock.move(160, -20)
-        midPointDock.setFeatures(QDockWidget.NoDockWidgetFeatures)
-        midPointDock.setWidget(self.midPointSpinBox)
-        midPointDock.show()
 
         self.endPointSpinBox = QSpinBox()
         self.endPointSpinBox.setRange(0, int(self.main.sampleRate // 2))
@@ -1216,11 +1300,17 @@ class ScaleDialog(QMainWindow):
         self.endPointSpinBox.setValue(self.endPoint)
         self.endPointSpinBox.setKeyboardTracking(False)
         self.endPointSpinBox.setFocusPolicy(Qt.ClickFocus)
-        endPointDock = QDockWidget(self)
-        endPointDock.move(265, -20)
-        endPointDock.setFeatures(QDockWidget.NoDockWidgetFeatures)
-        endPointDock.setWidget(self.endPointSpinBox)
-        endPointDock.show()
+
+        menuWidget = QWidget(self)
+        menu = QHBoxLayout(menuWidget)
+
+        menu.addWidget(mainBar)
+        menu.addWidget(self.startPointSpinBox)
+        menu.addWidget(self.midPointSpinBox)
+        menu.addWidget(self.endPointSpinBox)
+        menu.addStretch(10)
+
+        self.setMenuWidget(menuWidget)
 
     def setScaleMode(self, mode):
         if mode == 0:
@@ -1451,29 +1541,32 @@ class GradientDialog(QMainWindow):
         self.setGradient()
 
     def intiUI(self):
-        mainBar = self.menuBar()
-        mainBar.heightForWidth(20)
+        buttons = QWidget(self)
+        layout = QHBoxLayout(buttons)
 
-        self.dirModeCheck = QAction('Vertical', self)
+        self.dirModeCheck = QPushButton('Vertical', self)
         self.dirModeCheck.setCheckable(True)
-        self.dirModeCheck.triggered.connect(self.setDirMode)
+        self.dirModeCheck.clicked.connect(self.setDirMode)
+        layout.addWidget(self.dirModeCheck)
 
-        self.fillModeCheck = QAction('Whole', self)
+        self.fillModeCheck = QPushButton('Whole', self)
         self.fillModeCheck.setCheckable(True)
-        self.fillModeCheck.triggered.connect(self.setFillMode)
+        self.fillModeCheck.clicked.connect(self.setFillMode)
+        layout.addWidget(self.fillModeCheck)
 
-        clear = QAction('Clear', self)
-        clear.triggered.connect(self.runClear)
+        clear = QPushButton('Clear', self)
+        clear.clicked.connect(self.runClear)
+        layout.addWidget(clear)
 
-        self.enabled = QAction('Enabled', self)
+        self.enabled = QPushButton('Enabled', self)
         self.enabled.setCheckable(True)
-        self.enabled.triggered.connect(self.setEnabled)
+        self.enabled.clicked.connect(self.setEnabled)
         self.enabled.setChecked(True)
+        layout.addWidget(self.enabled)
 
-        mainBar.addAction(self.dirModeCheck)
-        mainBar.addAction(self.fillModeCheck)
-        mainBar.addAction(clear)
-        mainBar.addAction(self.enabled)
+        layout.addStretch(10)
+
+        self.setMenuWidget(buttons)
 
     def setDirMode(self, mode):
         if mode == 0:
@@ -1535,11 +1628,11 @@ class GradientDialog(QMainWindow):
 
     def resizeEvent(self, event):
         self.GW = self.size().width()   # Graphics Width
-        self.GH = self.size().height() - 20     # Graphics Height
+        self.GH = self.size().height()     # Graphics Height
 
     def paintEvent(self, event):
         painter = QPainter(self)
-        yPos = 20
+        yPos = 0
 
         gradient = QLinearGradient(self.gradient)
         gradient.setCoordinateMode(QGradient.ObjectBoundingMode)
@@ -1555,12 +1648,12 @@ class GradientDialog(QMainWindow):
                 painter.drawLine(0, pos, self.GW, pos)
             else:
                 pos = int(point[0] * self.GW)
-                painter.drawLine(pos, yPos, pos, self.GH+20)
+                painter.drawLine(pos, yPos, pos, self.GH)
 
     def mouseDoubleClickEvent(self, event):
         if event.button() == 1:
             if self.dirMode == 0:
-                point = 1 - ((event.y() - 20) / self.GH)
+                point = 1 - ((event.y()) / self.GH)
             else:
                 point = event.x() / self.GW
 
@@ -1572,7 +1665,7 @@ class GradientDialog(QMainWindow):
     def mousePressEvent(self, event):
         if event.button() == 2:
             if self.dirMode == 0:
-                posF = 1 - ((event.y() - 20) / self.GH)
+                posF = 1 - ((event.y()) / self.GH)
             else:
                 posF = event.x() / self.GW
 
