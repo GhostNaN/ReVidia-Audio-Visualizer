@@ -50,14 +50,18 @@ This will allow you to use a non-WASAPI speaker's audio and will have a better c
 - To use VB-CABLE follow the "Setting up VB-CABLE in 5 steps:" in the "WindowsReadme.txt"
   
 ## Future Ideas:
-#### In order of importance:
+#### In order of likely importance:
+- Animated background(WIP)
+- New ReVidia Icon
+- None bar form factors
 - General optimizing
-- Fix how transparency is done on Windows
-- Overhaul the old Linux terminal version
+- Fix how transparency is done on Windows(Decouple Settings?) 
+- Overhaul the ancient Linux terminal version
 
 ## Acknowledgments
 - Numpy mostly for the FFT
 - PyAudio and PortAudio for audio data collection
+  - PyAudio WASAPI loopack fork for Windows port
 - PyQt5 and QT for the GUI
 
  ## License
