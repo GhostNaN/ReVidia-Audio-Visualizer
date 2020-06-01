@@ -8,6 +8,7 @@ import time
 import subprocess
 import threading as th
 import multiprocessing as mp
+import random
 from PyQt5.QtCore import Qt, QPoint, QRect
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
@@ -40,6 +41,7 @@ class ReVidiaMain(QMainWindow):
         self.barColor = QColor(255, 255, 255, 255)
         self.outlineColor = QColor(0, 0, 0)
         self.lumen = 0
+        self.stars = {}
         self.gradient = 0
         self.checkRainbow = 0
         self.barWidth = 14
@@ -180,6 +182,10 @@ class ReVidiaMain(QMainWindow):
         self.lumenDict[str(self.lumen)].setChecked(True)
         self.lumenDict[str(self.lumen)].trigger()
 
+        starsDialog = QAction('Stars', self)
+        starsDialog.setToolTip('Animate Background with Stars')
+        starsDialog.triggered.connect(self.getStarsDialog)
+
         gradDialog = QAction('Gradient', self)
         gradDialog.setToolTip('Create a Gradient')
         gradDialog.triggered.connect(self.getGradDialog)
@@ -262,6 +268,7 @@ class ReVidiaMain(QMainWindow):
         mainMenu.addMenu(bufferMenu)
         designMenu.addMenu(colorMenu)
         designMenu.addMenu(lumenMenu)
+        designMenu.addAction(starsDialog)
         designMenu.addAction(gradDialog)
         designMenu.addAction(self.autoLevel)
         designMenu.addAction(sizesCheck)
@@ -388,7 +395,6 @@ class ReVidiaMain(QMainWindow):
                 self.oldVolList = []
                 self.oldTimes = []
                 freqList = ReVidia.assignFreq(self.audioBuffer, self.sampleRate, self.plotsList)
-                import random
                 # Insert a Tiny bit of random to prevent overlap in freq's
                 self.waveFreqList = list(map(lambda freq: freq + random.uniform(-0.1, 0.1), freqList))
 
@@ -470,6 +476,8 @@ class ReVidiaMain(QMainWindow):
         painter = QPainter(self)
         painter.setPen(QPen(Qt.NoPen))  # Removes pen
         self.paintBackground(event, painter)
+        if self.stars:
+            self.paintStars(event, painter)
         if not self.cutout:
             self.paintBars(event, painter)
         if self.checkFreq or self.checkNotes:
@@ -538,6 +546,102 @@ class ReVidiaMain(QMainWindow):
             painter.drawRect(xPos - self.wholeWidth + xSize, yPos,
                              self.size().width() + self.wholeWidth - xPos, self.size().height())   # Last Gap bar
 
+    def paintStars(self, event, painter):
+        # Parse star size range
+        starSizes = self.stars['SizeRange']
+        starSizes = [min(starSizes), max(starSizes) + 1]
+
+        # Starting off with random spread of stars
+        if not hasattr(self, 'starsList'):
+            self.starsList = []
+        while len(self.starsList) < self.stars['Amount']:
+            self.starsList.append((random.randrange(0, self.size().width()),
+                                   random.randrange(0, self.size().height()),
+                                   random.randrange(starSizes[0], starSizes[1])))
+        while len(self.starsList) > self.stars['Amount']:
+            self.starsList.remove(random.choice(self.starsList))
+
+        # Parse star plot range
+        plotRange = self.stars['PlotRange']
+        plotMod = self.barValues[min(plotRange) - 1:max(plotRange)]
+
+        # Main modifier that effects speed and twinkle based on user defined plot range avg.
+        modifier = (sum(plotMod) / len(plotMod)) / self.size().height()
+
+        # Calculate speed and angle of stars
+        import math
+        angleX = -math.sin(self.stars['Angle'] * (math.pi / 180))
+        angleY = math.cos(self.stars['Angle'] * (math.pi / 180))
+
+        speed = self.stars['MinSpeed']
+        speed += modifier * (self.stars['ModSpeed'] - self.stars['MinSpeed'])
+
+        # Normalize speed with fps
+        speed *= (1 / self.frameRate)
+
+        # Apply speed and angle to stars while removing out of bounds stars
+        newStarList = []
+        for star in self.starsList:
+            if (star[0] - star[2] > self.size().width()) or (star[0] + star[2] < 0):
+                pass
+            elif (star[1] - star[2] > self.size().height()) or (star[1] + star[2] < 0):
+                pass
+            else:
+                starXPos = star[0] + (speed * angleX)
+                StarYPos = star[1] + (speed * angleY)
+                newStarList.append((starXPos, StarYPos, star[2]))
+
+        self.starsList = newStarList
+
+        # Weighted random for stars start side
+        xSideSizeRatio = (self.size().width() / self.size().height())
+        ySideSizeRatio = (self.size().height() / self.size().width())
+        xWeight = int((abs(angleX) + (ySideSizeRatio * abs(angleX))) * 10)
+        yWeight = int((abs(angleY) + (xSideSizeRatio * abs(angleY))) * 10)
+        wieghtedSides = []
+        for w in range(xWeight):
+            wieghtedSides.append(0)
+        for w in range(yWeight):
+            wieghtedSides.append(1)
+
+        # Create new stars on a edge
+        while len(self.starsList) < self.stars['Amount']:
+
+            side = random.choice(wieghtedSides)
+            starSize = random.randrange(starSizes[0], starSizes[1])
+            if side == 0:
+                if angleX > 0:
+                    starXPos = 0 - starSize
+                else:
+                    starXPos = self.size().width() + starSize
+                starYPos = random.randrange(0, self.size().height())
+
+            else:
+                if angleY > 0:
+                    starYPos = 0 - starSize
+                else:
+                    starYPos = self.size().height() + starSize
+                starXPos = random.randrange(0, self.size().width())
+
+            self.starsList.append((starXPos, starYPos, starSize))
+
+        # Softens the stars and set brush
+        if self.stars['Twinkle']:
+            twinkle = modifier / 3
+        else:
+            twinkle = 0.33
+        gradient = QRadialGradient()
+        gradient.setCoordinateMode(QGradient.ObjectBoundingMode)
+        gradient.setStops(((twinkle, self.stars['Color']), (0.5, QColor(0,0,0,0))))
+        gradient.setCenter(0.5, 0.5)
+        gradient.setFocalPoint(0.5, 0.5)
+        painter.setBrush(gradient)
+
+        # Paint Stars
+        for star in self.starsList:
+            starPosCenter = (int(star[0] - (star[2] / 2)), int(star[1] - (star[2] / 2)))
+            painter.drawEllipse(starPosCenter[0], starPosCenter[1], star[2], star[2])
+
     def paintBars(self, event, painter):
         ySizeList = []
         yPosList = []
@@ -569,12 +673,14 @@ class ReVidiaMain(QMainWindow):
                     ySize = ySplitV + ySize
 
                 if self.lumen:
-                    color = QColor(barColor)
+
                     lumBright = int(ySize * lumReigen)
                     if lumBright > 255: lumBright = 255
                     if not self.gradient:
+                        color = QColor(barColor)
                         color.setAlpha(lumBright)
                     else:
+                        color = QGradient(barColor)
                         for stop in barColor.stops():
                             pos = stop[0]
                             point = stop[1]
@@ -725,23 +831,26 @@ class ReVidiaMain(QMainWindow):
         import os
         self.width = self.size().width()
         self.height = self.size().height()
+        self.gradAttr = 0
+
+        # Order Based Saving/Loading, adding new vars and changing vars names is fine as long as order is kept
         saveList = ['width', 'height', 'frameRate', 'pointsList', 'split', 'curvy', 'interp', 'audioBuffer', 'lumen',
                     'checkRainbow', 'barWidth', 'gapWidth', 'outlineSize', 'barHeight', 'wholeWidth', 'outline',
                     'cutout', 'checkFreq', 'checkNotes', 'checkDeadline', 'checkBarNum', 'checkLatency', 'checkDB',
-                    'backgroundColor', 'barColor', 'outlineColor']
+                    'backgroundColor', 'barColor', 'outlineColor', 'gradAttr', 'stars']
 
         if request == 'save':
             profile, ok = QInputDialog.getText(self, "Save Profile", "Profile Name:")
             if ok and profile:
+                # Special care for the gradient as it cannot be pickled
+                if self.gradient:
+                    grad = self.gradient
+                    self.gradAttr = grad.start(), grad.finalStop(), grad.stops(), grad.coordinateMode()
+
+                # Saving
                 with open('profiles/' + profile + '.pkl', 'wb') as file:
                     for setting in saveList:
                         pickle.dump(getattr(self, setting), file)
-                    if self.gradient:
-                        grad = self.gradient
-                        gradAttr = grad.start(), grad.finalStop(), grad.stops(), grad.coordinateMode()
-                        pickle.dump(gradAttr, file)
-                    else:
-                        pickle.dump(0, file)
         else:
             profileList = []
             for file in os.listdir('profiles'):
@@ -754,13 +863,17 @@ class ReVidiaMain(QMainWindow):
                 if ok and profile and profileList != ['No Profiles Saved']:
                     with open('profiles/' + profile + '.pkl', 'rb') as file:
                         for setting in saveList:
-                            var = pickle.load(file)
-                            setattr(self, setting, var)
-                        gradAttr = pickle.load(file)
-                        if gradAttr:
-                            self.gradient = QLinearGradient(gradAttr[0], gradAttr[1])
-                            self.gradient.setStops(gradAttr[2])
-                            self.gradient.setCoordinateMode(gradAttr[3])
+                            try:
+                                var = pickle.load(file)
+                                setattr(self, setting, var)
+                            except EOFError:
+                                print("Warning Old Profile: Some settings might not be imported")
+                                break
+
+                        if self.gradAttr:
+                            self.gradient = QLinearGradient(self.gradAttr[0], self.gradAttr[1])
+                            self.gradient.setStops(self.gradAttr[2])
+                            self.gradient.setCoordinateMode(self.gradAttr[3])
                         else:
                             self.gradient = 0
                     self.mainBar.clear()
@@ -969,6 +1082,12 @@ class ReVidiaMain(QMainWindow):
                 self.lumenDict[str(f)].setChecked(False)
             else:
                 self.lumenDict[str(f)].setChecked(True)
+
+    def getStarsDialog(self):
+        self.starsDialog = StarsDialog(self)
+        self.starsDialog.move(self.pos().x(), self.pos().y() + self.size().height())
+
+        self.starsDialog.show()
 
     def getGradDialog(self):
         self.gradDialog = GradientDialog(self)
@@ -1189,6 +1308,7 @@ class ReVidiaMain(QMainWindow):
     def mousePressEvent(self, event):
         if event.button() == 2:  # Right click
             self.mouseGrab = [event.x(), event.y()]
+            self.setCursor(Qt.SizeAllCursor)
 
     def mouseMoveEvent(self, event):
         if hasattr(self, 'mouseGrab'):
@@ -1199,6 +1319,7 @@ class ReVidiaMain(QMainWindow):
     def mouseReleaseEvent(self, event):
         if hasattr(self, 'mouseGrab'):
             del self.mouseGrab
+            self.unsetCursor()
 
     # Allows to adjust bars height by scrolling on window
     def wheelEvent(self, event):
@@ -1227,6 +1348,15 @@ class ReVidiaMain(QMainWindow):
 
     # Makes sure the processes are not running in the background after closing
     def closeEvent(self, event):
+        # Close Dialogs
+        if hasattr(self, 'fftDialog'):
+            self.fftDialog.close()
+        if hasattr(self, 'scaleDialog'):
+            self.scaleDialog.close()
+        if hasattr(self, 'starsDialog'):
+            self.starsDialog.close()
+        if hasattr(self, 'gradDialog'):
+            self.gradDialog.close()
         try:
             self.mainQ.put(1)   # End main thread
             self.P1.terminate()   # Kill Processes
@@ -1564,6 +1694,204 @@ class ScaleDialog(QMainWindow):
         self.holdStartPoint = 0
         self.holdMidPoint = 0
         self.holdEndPoint = 0
+
+
+class StarsDialog(QMainWindow):
+    def __init__(self, main):
+        super(StarsDialog, self).__init__()
+        self.main = main
+        self.setWindowTitle('Stars')
+
+        if not self.main.stars:
+            self.starsStats = {'Amount': 100, 'Angle': 300, 'Color': QColor(255, 255, 255), 'MinSpeed': 25,
+                               'ModSpeed': 100, 'SizeRange': (1, 5), 'PlotRange': (1, 10), 'Twinkle': 1}
+        else:
+            self.starsStats = self.main.stars
+        self.main.stars = self.starsStats
+
+        self.intiUI()
+
+    def intiUI(self):
+        UI = QWidget(self)
+        layout = QGridLayout(UI)
+
+        self.toggleStars = QPushButton('Enabled')
+        self.toggleStars.setCheckable(True)
+        self.toggleStars.clicked.connect(self.setToggleStars)
+
+        starsAmountSpin = QSpinBox()
+        starsAmountSpin.setRange(1, 9999)
+        starsAmountSpin.setSuffix(' Stars')
+        starsAmountSpin.valueChanged.connect(self.setStarsAmount)
+        starsAmountSpin.setKeyboardTracking(False)
+        starsAmountSpin.setFocusPolicy(Qt.ClickFocus)
+        starsAmountSpin.setValue(self.starsStats['Amount'])
+
+        starsAmount = QVBoxLayout()
+        starsAmount.addWidget(QLabel('Stars Drawn'), 0, Qt.AlignCenter)
+        starsAmount.addWidget(starsAmountSpin, 1)
+
+        self.starAngleText = QLabel(self)
+        self.starAngleText.setText('Angle ' + str(self.starsStats['Angle']) + '°')
+        starsAngleDial = QDial()
+        starsAngleDial.setMaximum(359)
+        starsAngleDial.setValue(self.starsStats['Angle'])
+        starsAngleDial.valueChanged.connect(self.setStarsAngle)
+
+        starsColor = QPushButton("Color")
+        starsColor.clicked.connect(self.setStarsColor)
+
+        starMinSpeedSpin = QSpinBox()
+        starMinSpeedSpin.setRange(0, 9999)
+        starMinSpeedSpin.setSuffix(' PixelsPerSec')
+        starMinSpeedSpin.valueChanged.connect(self.setStarMinSpeed)
+        starMinSpeedSpin.setKeyboardTracking(False)
+        starMinSpeedSpin.setFocusPolicy(Qt.ClickFocus)
+        starMinSpeedSpin.setValue(self.starsStats['MinSpeed'])
+        starMinSpeed = QVBoxLayout()
+        starMinSpeed.addWidget(QLabel('Normal Speed'), 0, Qt.AlignCenter)
+        starMinSpeed.addWidget(starMinSpeedSpin, 1)
+
+        starModSpeedSpin = QSpinBox()
+        starModSpeedSpin.setRange(0, 9999)
+        starModSpeedSpin.setSuffix(' PixelsPerSec')
+        starModSpeedSpin.valueChanged.connect(self.setStarModSpeed)
+        starModSpeedSpin.setKeyboardTracking(False)
+        starModSpeedSpin.setFocusPolicy(Qt.ClickFocus)
+        starModSpeedSpin.setValue(self.starsStats['ModSpeed'])
+
+        starModSpeed = QVBoxLayout()
+        starModSpeed.addWidget(QLabel('Modified Speed'), 0, Qt.AlignCenter)
+        starModSpeed.addWidget(starModSpeedSpin, 1)
+
+        self.twinkleToggle = QPushButton('Twinkle On')
+        if not self.starsStats['Twinkle']:
+            self.twinkleToggle.setText('Twinkle Off')
+        self.twinkleToggle.setCheckable(True)
+        self.twinkleToggle.clicked.connect(self.setTwinkle)
+        self.twinkleToggle.setChecked(self.starsStats['Twinkle'])
+
+        starSizeA = QSpinBox()
+        starSizeA.setRange(1, 999)
+        starSizeA.setSuffix(' Pixels')
+        starSizeA.valueChanged.connect(self.setStarSizeA)
+        starSizeA.setKeyboardTracking(False)
+        starSizeA.setFocusPolicy(Qt.ClickFocus)
+        starSizeA.setValue(self.starsStats['SizeRange'][0])
+
+        starSizeB = QSpinBox()
+        starSizeB.setRange(1, 999)
+        starSizeB.setSuffix(' Pixels')
+        starSizeB.valueChanged.connect(self.setStarSizeB)
+        starSizeB.setKeyboardTracking(False)
+        starSizeB.setFocusPolicy(Qt.ClickFocus)
+        starSizeB.setValue(self.starsStats['SizeRange'][1])
+
+        starSizeRangeSpins = QSplitter()
+        starSizeRangeSpins.addWidget(starSizeA)
+        starSizeRangeSpins.addWidget(starSizeB)
+        starSizeRange = QVBoxLayout()
+        starSizeRange.addWidget(QLabel('Star Size'), 0, Qt.AlignCenter)
+        starSizeRange.addWidget(starSizeRangeSpins, 1)
+
+        starModifierA = QSpinBox()
+        starModifierA.setRange(1, len(self.main.barValues))
+        starModifierA.setPrefix('Plot ')
+        starModifierA.valueChanged.connect(self.setStarModifierA)
+        starModifierA.setKeyboardTracking(False)
+        starModifierA.setFocusPolicy(Qt.ClickFocus)
+        starModifierA.setValue(self.starsStats['PlotRange'][0])
+
+        starModifierB = QSpinBox()
+        starModifierB.setRange(1, len(self.main.barValues))
+        starModifierB.setPrefix('Plot ')
+        starModifierB.valueChanged.connect(self.setStarModifierB)
+        starModifierB.setKeyboardTracking(False)
+        starModifierB.setFocusPolicy(Qt.ClickFocus)
+        starModifierB.setValue(self.starsStats['PlotRange'][1])
+
+        plotModRangeSpins = QSplitter()
+        plotModRangeSpins.addWidget(starModifierA)
+        plotModRangeSpins.addWidget(starModifierB)
+        plotModRange = QVBoxLayout()
+        plotModRange.addWidget(QLabel('Modifier Range'), 0, Qt.AlignCenter)
+        plotModRange.addWidget(plotModRangeSpins, 1)
+
+        layout.addWidget(self.toggleStars, 0, 0)
+        layout.addLayout(starsAmount, 0, 1)
+        layout.addWidget(starsAngleDial, 0, 3, 2, 2)
+
+        layout.addWidget(starsColor, 1, 0)
+        layout.addLayout(starMinSpeed, 1, 1)
+        layout.addLayout(starModSpeed, 1, 2)
+        layout.addWidget(self.starAngleText, 1, 3, 2, 2, Qt.AlignCenter)
+
+        layout.addWidget(self.twinkleToggle, 2, 0)
+        layout.addLayout(starSizeRange, 2, 1)
+        layout.addLayout(plotModRange, 2, 2)
+
+        self.setCentralWidget(UI)
+
+    def setToggleStars(self, mode):
+        if mode == 0:
+            self.toggleStars.setText('Enabled')
+            self.main.stars = self.starsStats
+        else:
+            self.toggleStars.setText('Disabled')
+            self.main.stars = 0
+
+    def setStarsAmount(self, value):
+        self.starsStats['Amount'] = value
+        self.main.stars = self.starsStats
+
+    def setStarsAngle(self, value):
+        self.starsStats['Angle'] = value
+        self.starAngleText.setText('Angle ' + str(value) + '°')
+
+        self.main.stars = self.starsStats
+
+    def setStarsColor(self):
+        color = QColorDialog.getColor(self.starsStats['Color'],None,None,QColorDialog.ShowAlphaChannel)
+        self.starsStats['Color'] = color
+        self.main.stars = self.starsStats
+
+    def setStarMinSpeed(self, value):
+        self.starsStats['MinSpeed'] = value
+        self.main.stars = self.starsStats
+
+    def setStarModSpeed(self, value):
+        self.starsStats['ModSpeed'] = value
+        self.main.stars = self.starsStats
+
+    def setTwinkle(self, on):
+        if on:
+            self.twinkleToggle.setText('Twinkle On')
+            self.starsStats['Twinkle'] = 1
+        else:
+            self.twinkleToggle.setText('Twinkle Off')
+            self.starsStats['Twinkle'] = 0
+
+        self.main.stars = self.starsStats
+
+    def setStarSizeA(self, value):
+        B = self.starsStats['SizeRange'][1]
+        self.starsStats['SizeRange'] = (value, B)
+        self.main.stars = self.starsStats
+
+    def setStarSizeB(self, value):
+        A = self.starsStats['SizeRange'][0]
+        self.starsStats['SizeRange'] = (A, value)
+        self.main.stars = self.starsStats
+
+    def setStarModifierA(self, value):
+        B = self.starsStats['PlotRange'][1]
+        self.starsStats['PlotRange'] = (value, B)
+        self.main.stars = self.starsStats
+
+    def setStarModifierB(self, value):
+        A = self.starsStats['PlotRange'][0]
+        self.starsStats['PlotRange'] = (A, value)
+        self.main.stars = self.starsStats
 
 
 class GradientDialog(QMainWindow):

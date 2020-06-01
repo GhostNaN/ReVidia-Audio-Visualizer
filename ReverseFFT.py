@@ -1,6 +1,5 @@
 #!venv2/bin/python
 
-import ReVidia
 import numpy as np
 import wave
 
@@ -31,6 +30,7 @@ def createWaves(sampleRate, freqPlot, volList, oldVolList, time, oldTimes):
     sampleList = []
     endTimes = []
     for i in range(len(freqPlot)):
+
         vol = volList[i]
         freq = freqPlot[i]
         if 0 < freq:
@@ -59,14 +59,13 @@ def createWaves(sampleRate, freqPlot, volList, oldVolList, time, oldTimes):
                 finalSignal = signal * (vol * 32767)
 
             sampleList.append(finalSignal)
+
         else:
             endTimes.append(0)
 
-    combinedWave = sampleList[0]
-    for i in range(1, len(sampleList)):
-        combinedWave = np.add(combinedWave, sampleList[i])
+    combinedWave = np.sum(sampleList, 0)
 
-    finalWave = combinedWave / len(sampleList)
+    finalWave = (combinedWave / len(sampleList))
     finalWave = finalWave.astype('int16')
 
     return (finalWave, endTimes)
