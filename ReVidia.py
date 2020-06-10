@@ -77,26 +77,25 @@ def collectData(dataTime, dataArr, dataArr2, dataQ, device, buffer, split):
 
         # Request a setting change
         while dataQ.qsize() > 0:
-            change = dataQ.get()
+            request = dataQ.get()
 
-            if 'kill' in change:
+            if 'kill' in request:
                 p.terminate()
                 sys.exit()
-            elif 'buffer' in change:  # Change a setting
-                buffer = change[1]
-            elif 'split' in change:
-                split = change[1]
+            elif 'buffer' in request:  # Change a setting
+                buffer = request[1]
+            elif 'split' in request:
+                split = request[1]
 
 
-# Processes data into Y values of bars
+# Processes data into Y values of plots
 def processData(syncLock, dataTime, proTime, dataArr, dataArr2, proArr, proArr2, proQ, dataQ,
                 frameRate, buffer, plotsList, split, curvy, interp):
 
     killTimeout = 3  # How many seconds to wait for main thread
     frameTime = 1 / frameRate
-    width = len(plotsList) - 1
-    barValues = []
-    splitBarValues = []
+    dataLen = len(plotsList) - 1
+
     oldList = []
     oldSplitList = []
     while True:
@@ -109,33 +108,33 @@ def processData(syncLock, dataTime, proTime, dataArr, dataArr2, proArr, proArr2,
             rightDataList = dataArr2[:buffer]
 
         # Transforms audio data
-        oldBarValues = barValues
-        barValues = transformData(dataList, plotsList, curvy)
+        plotValues = transformData(dataList, plotsList, curvy)
         if split:
-            oldSplitValues = splitBarValues
-            splitBarValues = transformData(rightDataList, plotsList, curvy)
+            plotSplitValues = transformData(rightDataList, plotsList, curvy)
 
         # Smooth audio data using past averages
         if interp:
-            if len(oldList) <= interp:
-                oldList.append(list(oldBarValues))
-                if split:
-                    oldSplitList.append(list(oldSplitValues))
             while len(oldList) > interp:
-                del (oldList[0])
+                del oldList[0]
             if split:
                 while len(oldSplitList) > interp:
-                    del (oldSplitList[0])
+                    del oldSplitList[0]
 
-            barValues = interpData(barValues, oldList)
+            oldList.append(plotValues)
+            finalValues = interpData(plotValues, oldList)
             if split:
-                splitBarValues = interpData(splitBarValues, oldSplitList)
+                oldSplitList.append(plotSplitValues)
+                finalSplitValues = interpData(plotSplitValues, oldSplitList)
+        else:
+            finalValues = plotValues
+            if split:
+                finalSplitValues = plotSplitValues
 
         # Send out data
         proTime.value = delayTime
-        proArr[:width] = barValues
+        proArr[:dataLen] = finalValues
         if split:
-            proArr2[:width] = splitBarValues
+            proArr2[:dataLen] = finalSplitValues
 
         workTime = time.time() - frameTimer
 
@@ -158,7 +157,7 @@ def processData(syncLock, dataTime, proTime, dataArr, dataArr2, proArr, proArr2,
                 interp = request[1]
             elif 'plots' in request:
                 plotsList = request[1]
-                width = len(plotsList) - 1
+                dataLen = len(plotsList) - 1
 
         killTime = time.time()
         syncLock.acquire(timeout=killTimeout)
@@ -172,23 +171,9 @@ def processData(syncLock, dataTime, proTime, dataArr, dataArr2, proArr, proArr2,
             delay = 0
         # Scale margin for error based on work load
         margin = 1 - ((workTime / frameTime) / 2)
-        if margin > 0.95: margin = 0.95
+        if margin > 0.90: margin = 0.90
         if (margin > 0) and (delay > 0):
             time.sleep(delay * margin)
-
-
-# Assigns frequencies locations based on plots
-def assignFreq(buffer, samples, plotsList, maxMode=False):
-    freq = samples / buffer
-
-    freqs = list(map(lambda plot: plot * freq, plotsList))
-
-    if not maxMode:
-        freqList = freqs[:-1]
-    else:
-        freqList = freqs
-
-    return freqList
 
 
 # Assigns notes locations based on the frequency plot
@@ -225,22 +210,22 @@ def getDB(data):
     return dB
 
 
-# Interpolates the data to smooth out the bars
-def interpData(barValues, oldList):
-    interpBarValues = barValues
+# Interpolates the data to smooth out the visuals
+def interpData(plotValues, oldList):
+    # Because Numpy was slower
+    interpValues = plotValues
+    if oldList:
+        if all([len(oldList[i]) == len(plotValues) for i in range(len(oldList))]):
+            combinedValues = [sum(i) for i in zip(*oldList)]
+            interpValues = list(map(lambda value: value // len(oldList), combinedValues))
 
-    if len(oldList[0]) == len(barValues):
-        for oldValues in oldList:
-            barValues = list(map(lambda new, old: new + old, barValues, oldValues))
-        divide = len(oldList) + 1
-        interpBarValues = list(map(lambda bars: bars // divide, barValues))
-
-    return interpBarValues
+    return interpValues
 
 
 # Savitzky Golay Filter straight from the SciPy Cookbook
 def savitzkyGolay(y, window_size, order, deriv=0, rate=1):
     from math import factorial
+    y = np.array(y)
     try:
         window_size = np.abs(np.int(window_size))
         order = np.abs(np.int(order))
@@ -311,7 +296,8 @@ def dataPlotter(values, step, limit):
 
 def rescaleData(data, dataCap, ceiling, log=False):
     if not dataCap:
-        dataCap = 1
+        dataCap = max(data)
+        if dataCap == 0: dataCap = 1
     if not log:
         scaledData = np.interp(data, (0, dataCap), (0, ceiling))
     else:   # WIP may be used later
@@ -335,31 +321,31 @@ def transformData(dataList, plotsList, curvy=False):
     transform = np.fft.rfft(dataList, buffer, norm="ortho")
     absTransform = np.abs(transform)     # Each plot is rate/buffer = frequency
 
-    barValues = []
+    plotValues = []
     for z in range(len(plotsList)-1):
         minNum = plotsList[z]
         maxNum = plotsList[z+1]
 
         if maxNum > minNum:
-            barValues.append(int(max(absTransform[minNum:maxNum])))
+            plotValues.append(int(max(absTransform[minNum:maxNum])))
         else:
-            barValues.append(int(max(absTransform[maxNum:minNum])))
+            plotValues.append(int(max(absTransform[maxNum:minNum])))
 
     if curvy:
-        curveArray = np.array(barValues)
         w = curvy[0]
         p = curvy[1]
-        if w > len(plotsList): w = len(plotsList)  # Fail Safes
+        # Fail Safes
+        if w > len(plotsList): w = len(plotsList)
         if (w % 2) == 0: w += 1
+        if w >= 5:
+            filtered = savitzkyGolay(plotValues, w, p)  # data, window size, polynomial order
 
-        filtered = savitzkyGolay(curveArray, w, p)  # data, window size, polynomial order
+            # Apply a basic moving avg on top to blend data
+            movingAvg = []
+            movingAvg.append((filtered[0] + filtered[1]) // 2)
+            movingAvg.extend(map(lambda back, mid, front: (back + mid + front) // 3, filtered[0:], filtered[1:], filtered[2:]))
+            movingAvg.append((filtered[-2] + filtered[-1]) // 2)
 
-        # Apply a basic moving avg on top to blend data
-        movingAvg = []
-        movingAvg.append((filtered[0] + filtered[1]) // 2)
-        movingAvg.extend(map(lambda back, mid, front: (back + mid + front) // 3, filtered[0:], filtered[1:], filtered[2:]))
-        movingAvg.append((filtered[-2] + filtered[-1]) // 2)
+            plotValues = list(map(int, movingAvg))
 
-        barValues = list(map(int, movingAvg))
-
-    return barValues
+    return plotValues
