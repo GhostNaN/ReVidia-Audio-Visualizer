@@ -51,9 +51,7 @@ This will allow you to use a non-WASAPI speaker's audio and will have a better c
   
 ## Future Ideas:
 #### In order of likely importance:
-- Animated background(WIP)
 - New ReVidia Icon
-- None bar form factors
 - General optimizing
 - Fix how transparency is done on Windows(Decouple Settings?) 
 - Overhaul the ancient Linux terminal version
