@@ -40,6 +40,7 @@ This will allow you to use a non-WASAPI speaker's audio and will have a better c
 ## Acknowledgments
 - Numpy mostly for the FFT
 - PyAudio and PortAudio for audio data collection
+  - PyAudio WASAPI loopack fork for Windows port
 - PyQt5 and QT for the GUI
 
  ## License
