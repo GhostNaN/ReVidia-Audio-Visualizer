@@ -16,7 +16,7 @@ chmod +x ReVidia.desktop
 echo "[Desktop Entry]
 Name=ReVidia
 Type=Application
-Comment='Audio Visualizer'
+Comment=Audio Visualizer
 Terminal=false
 Icon=$(pwd)/docs/REV.png
 Exec=bash -c '"$(dirname "$1")"/ReVidiaGUI.py' dummy %k

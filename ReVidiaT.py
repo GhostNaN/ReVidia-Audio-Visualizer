@@ -1,254 +1,488 @@
 #!venv/bin/python
 # -*- coding: utf-8 -*-
-
+import ReVidia
 import os
-import pyaudio
 import time
+import signal
 import curses
-import struct
-import queue
-import threading as th
-import numpy as np
-import subprocess as subp
+import subprocess
+import multiprocessing as mp
 
-# Default global variables
-width = 64          # fallback width
-ceiling = 1000000   # The max value of bars (Default = 5 00000)
-frames = 2048       # How accurate/fast bars appear (Default = 1024)
-printFPS = 0        # Print video frames per sec
-printFrames = 0     # Print number of audio frames
-printBarNum = 0     # Print number of bars
-printCeilNum = 0    # Print ceiling number
-printDelayNum = 0   # Print delay number
-interpretBars = 1   # Smooths out the bars, but adds "visual" delay
-barThick = 2
-gapThick = 1
-# Extra variables to avoid error
-barValues = []
-timeF = 0
-timeC = 0
-timeDStart = 0
 
-# Displays device ID options
-p = pyaudio.PyAudio()
-os.system('clear')
-numDevices = p.get_device_count()
-for ID in range(numDevices):
-    if (p.get_device_info_by_index(ID).get('maxInputChannels')) > 0:
-        print(ID, "-", p.get_device_info_by_index(ID).get('name'))
-device = int(input('Select Audio Device ID:'))
-os.system('tput civis')     # Makes cursor invisible
+class ReVidiaTerm():
+    def __init__(self):
+        super(ReVidiaTerm, self).__init__()
+        signal.signal(signal.SIGINT, self.killEvent)
 
-# Open stream to collect audio data.
-stream = p.open(
-    input_device_index=device,
-    format=pyaudio.paInt16,
-    channels=2,
-    rate=int(p.get_device_info_by_index(device).get('defaultSampleRate')),
-    input=True,
-    frames_per_buffer=1)
+        self.slices = 8     # Slices of chars
+        self.pointsList = [0, 1, 1000, 0.66, 1, 12000]
+        self.split = 0
+        self.curvy = 0
+        self.interp = 4
+        self.audioBuffer = 4096
+        self.lumen = 0
+        self.stars = {}
+        self.gradient = 0
+        self.checkRainbow = 0
+        self.plotWidth = 2
+        self.gapWidth = 1
+        self.dataCap = 0
+        self.wholeWidth = self.plotWidth + self.gapWidth
+        self.checkStats = 0
+        self.checkFreq = 0
+        self.checkNotes = 0
+        self.frameRate = 100
 
-# Collects the raw audio data and coverts to ints
-def audioData(q):
-    dataList = []
-    for i in range(frames):
-        data = stream.read(1)
-        dataList.append(sum(struct.unpack("2h", data)))
-    q.put(dataList)
+        self.curveList = [0, (0.05, 3), (0.15, 3), (0.30, 3), (1, 3)]  # [0, (5,3), (11,3), (23,3), (43,3)]
+        self.interpList = [0, 4, 8, 16, 32]
+        self.audioBufferList = [1024, 2048, 4096, 8096]
+        
+        self.getDevice()
+        self.starterVars()
+        self.updateSize()
+        self.updateStack()
+        self.startProcesses()
 
-# Start the initial thread and queue to collect data
-Q1 = queue.Queue()
-T1 = th.Thread(target=audioData, args=(Q1,))
-T1.start()
+    def starterVars(self):
+        # Define placeholder stater variables
+        self.width = 1
+        self.height = 1
+        self.plotValues = [0]
+        self.plotSplitValues = [0]
+        self.dataList = [0]
+        self.delay = 0
+        self.frames = 0
+        self.paintBusy = 0
+        self.paintTime = 0
+        self.paintDelay = (1 / self.frameRate)
+        self.loopTime = 0
+        self.latency = 0
+        self.latePercent = 0
 
-# Begin the infinite loop of ReVidia
-while stream.is_active():
+    def startProcesses(self):
+        self.syncLock = mp.Lock()
+        # Queues to change settings in process
+        self.dataQ = mp.Queue()
+        self.proQ = mp.Queue()
+        self.mainQ = mp.Queue()
+        # Values to carry timings
+        dataTime = mp.Value('d')
+        self.proTime = mp.Value('d')
+        self.audioPeak = mp.Value('i', 0)
+        # Arrays to transfer data between processes very fast
+        self.dataArray = mp.Array('i', 16384)
+        dataArray2 = mp.Array('i', 16384)
+        self.proArray = mp.Array('i', 8192)
+        self.proArray2 = mp.Array('i', 8192)
 
-    # Delay Checker
-    if printDelayNum:
-        timeDEnd = time.time()
-        realTimeD = (timeDEnd - timeDStart) * 1000
-        timeDStart = time.time()
+        # Create separate process for audio data collection
+        self.T1 = mp.Process(target=ReVidia.collectData, args=(
+            dataTime, self.dataArray, dataArray2, self.dataQ, self.ID, self.audioBuffer, self.split))
 
-    # Gets console X and Y dimensions to set width
-    consoleY, consoleX = subp.check_output(['stty', 'size']).decode().split()
-    width = int(consoleX) // (gapThick + barThick)
-    if width < 2: width = 2
+        # Create separate process for audio data processing
+        self.P1 = mp.Process(target=ReVidia.processData, args=(
+            self.syncLock, dataTime, self.proTime, self.audioPeak, self.dataArray, dataArray2, self.proArray, self.proArray2, self.proQ, self.dataQ,
+            self.frameRate, self.audioBuffer, self.plotsList, self.split, self.curvy, self.interp))
 
-    # Part 2 of separate thread audio data collection
-    T1.join()
-    dataList = Q1.get()
+        self.T1.daemon = True
+        self.P1.daemon = True
+        self.T1.start()
+        self.P1.start()
 
-    # The heart of ReVidia, the fourier transform.
-    transform = np.fft.fft(dataList)
-    absTransform = np.abs(transform[0:frames//2])     # Each plot is rate/frames = frequency
-
-    # Part 1 of separate thread audio data collection
-    T1 = th.Thread(target=audioData, args=(Q1,))
-    T1.start()
-
-    # Most of the math to plot ReVidia.
-    # It scales linearly for 3/4, then exponentially to 12khz.
-    oldBarValues = barValues
-    startGrow = int(width // 1.5)
-    expoGrow = ((frames//4)/startGrow)**(1/(width - startGrow))
-    xBarMaxFloat = startGrow
-    xBarMax = startGrow
-
-    barValues = list(map(int, absTransform[0:startGrow]))   # Linearly scale
-
-    for z in range(width - startGrow):                       # Exponentially scale
-        xBarMin = xBarMax
-        xBarMaxFloat *= expoGrow
-        xBarMax = int(-(-xBarMaxFloat // 1))
-        if xBarMax - xBarMin <= 0:
-            xBarMax += 1
-
-        barValues.append(int(max(absTransform[xBarMin:xBarMax])))
-
-    # Interpolates the data to smooth out the bars
-    interpAmnt = 1
-    fakeBarValues = []
-    if interpretBars:
-        interpAmnt = frames // 512
-        if len(oldBarValues) == width:
-            interpBarValues = list(map(lambda new, old: (new - old) // interpAmnt, barValues, oldBarValues))
-
-            for r in range(interpAmnt):
-                oldBarValues = list(map(lambda old, interp: old + interp, oldBarValues, interpBarValues))
-                fakeBarValues.append(oldBarValues)
-
-    # Prints out the graph
-    # ~85FPS cap as the konsole terminal can't do anymore than that.
-    for z in range(interpAmnt):
-        if fakeBarValues:
-            barValues = fakeBarValues[z]
-        if z == 0:
-            firstFrameTime = 0.0115 - (time.time() - timeC)
-            if firstFrameTime > 0:
-                time.sleep(firstFrameTime)
-        else:
-            time.sleep(0.0115)
-        yBarMin = ceiling
-        barHeight = int(consoleY)
-        yWidth = ceiling // barHeight
-        halfYWidth = yWidth // 2
-        for y in range(barHeight):
-            printBarLine = []
-            for x in range(width):
-                if barValues[x] > yBarMin:
-                    printBarLine.append('\u2588' * barThick)
-                elif barValues[x] > (yBarMin - halfYWidth):
-                    printBarLine.append('\u2584' * barThick)
-                else:
-                    printBarLine.append(' ' * barThick)
-            yBarMin -= yWidth
-            if y < (barHeight - 1):
-                print((' ' * gapThick).join(printBarLine))
-            else:
-                print((' ' * gapThick).join(printBarLine), end='\r')
-
-        # Prints debug stats
-        if printFPS or printFrames or printBarNum or printDelayNum or printCeilNum:
-            print('')
-            printDebugList = []
-            if printBarNum:
-                printDebugList.append(str(width) + ' Bars')
-            if printFrames:
-                printDebugList.append(str(frames) + ' Frames')
-            if printCeilNum:
-                printDebugList.append(str(ceiling//1000) + ' High')
-            if printFPS:
-                printDebugList.append(str(round(1000 // ((time.time() - timeF) * 1000))) + 'FPS')
-                timeF = time.time()
-            if printDelayNum:
-                printDebugList.append(str(round(realTimeD, 2)) + 'ms')
-
-            print(' | '.join(printDebugList), end='\r')
-
-    timeC = time.time()     # Collects time between graph end to start for frame time consistency.
-
-    # Controls ReVidia with character inputs
-    def controls(win):
-        win.nodelay(True)
-        try:
-            key = win.getkey()
-            return key
-        except Exception:
-            pass    # No input
-    key = curses.wrapper(controls)
-
-    # Key list
-    if key == 'q':
-        print('\n', 'Quiting')
-        time.sleep(0.5)
-        break
-    if key == 'p':
-        print('\n', 'Paused')
+        self.mainLoop()
+        
+    def mainLoop(self):
+        os.system('tput civis') # Makes cursor invisible
+        timer = time.time()
         while True:
-            time.sleep(0.25)
-            key = curses.wrapper(controls)
-            if key == 'p': break
-    if key == 'r':
-        if frames < 4096:
-            frames += 512
-    if key == 'f':
-        if frames > 512:
-            frames -= 512
-    if key == 'g':
-        if ceiling < 10000000:
-            ceiling += 50000
-        else:
-            print('\n', 'MIN INPUT REACHED')
-            time.sleep(0.10)
-    if key == 't':
-        if ceiling > 50000:
-            ceiling -= 50000
-        else:
-            print('\n', 'MAX INPUT REACHED')
-            time.sleep(0.10)
-    if key == 'y':
-        if barThick > 1:
-            barThick -= 1
-    if key == 'u':
-        if barThick < 25:
-            barThick += 1
-    if key == 'h':
-        if gapThick > 1:
-            gapThick -= 1
-    if key == 'j':
-        if gapThick < 25:
-            gapThick += 1
-    # Toggles
-    if key == 'n':
-        if not printFrames:
-            printFrames = 1
-        elif printFrames:
-            printFrames = 0
-    if key == 'b':
-        if not printBarNum:
-            printBarNum = 1
-        elif printBarNum:
-            printBarNum = 0
-    if key == 'v':
-        if not printDelayNum:
-            printDelayNum = 1
-        elif printDelayNum:
-            printDelayNum = 0
-    if key == 'c':
-        if not printCeilNum:
-            printCeilNum = 1
-        elif printCeilNum:
-            printCeilNum = 0
-    if key == 'x':
-        if not printFPS:
-            printFPS = 1
-        elif printFPS:
-            printFPS = 0
-    if key == 'd':
-        if not interpretBars:
-            interpretBars = 1
-        elif interpretBars:
-            interpretBars = 0
+            # Gets the real frametime for time sensitive objects
+            self.loopTime = time.time() - timer
+            timer = time.time()
 
-os.system('clear')
+            # Gets final results from processing
+            self.delay = self.proTime.value
+            plotsData = self.proArray[:self.plotsAmt]
+            splitPlotData = self.proArray2[:self.plotsAmt]
+            if self.checkStats:
+                self.dataList = self.dataArray[:self.audioBuffer]
+
+            # Resize Data with user's defined height or the data's height Half slices
+            self.plotValues = ReVidia.rescaleData(plotsData, self.dataCap, self.height * self.slices)
+            self.plotSplitValues = ReVidia.rescaleData(splitPlotData, self.dataCap, self.height * self.slices)
+
+            if not self.P1.is_alive():
+                print('RIP Audio Processor, shutting down.')
+                break
+            if not self.T1.is_alive():
+                print('RIP Audio Data Collector, shutting down.')
+                break
+
+            try:  # Avoid Crash
+                self.syncLock.release()  # Start processing next frame
+            except: pass
+
+            self.printBars()
+            if self.checkStats:
+                self.printStats()
+
+            delay = self.paintDelay - (time.time() - self.paintTime)
+            if delay > 0:
+                time.sleep(delay)
+            # Auto correcting frame pacer to account for variance in os time
+            framePace = time.time() - self.paintTime
+            if framePace > (1 / self.frameRate):
+                self.paintDelay -= (0.001 / self.frameRate)
+            else:
+                self.paintDelay += (0.001 / self.frameRate)
+            self.paintTime = time.time()
+
+            self.checkInput()
+            self.updateSize()
+
+            if self.mainQ.qsize() > 0:
+                break
+    
+    def updateSize(self):
+        oldWidth = self.width
+        oldHeight = self.height
+        consoleY, consoleX = subprocess.check_output(['stty', 'size']).decode().split()
+        self.width = int(consoleX)
+        self.height = int(consoleY)
+        
+        if (oldWidth != self.width) or (oldHeight != self.height):
+            self.updateStack()
+        
+    # Convenience function to update all at once in the right order
+    def updateStack(self):
+        self.updatePlotsAmt()
+        self.updatePlots()
+        self.updateFreqList()
+
+    def updatePlots(self):
+        plot = self.sampleRate / self.audioBuffer
+
+        startPoint = self.pointsList[0] / plot
+        startCurve = startPoint * self.pointsList[1]
+        midPoint = self.pointsList[2] / plot
+        midPointPos = int(round(self.plotsAmt * self.pointsList[3]))
+        endCurve = midPoint * self.pointsList[4]
+        endPoint = self.pointsList[5] / plot
+
+        startScale = ReVidia.quadBezier(startPoint, midPoint, startCurve, midPointPos)
+        endScale = ReVidia.quadBezier(midPoint, endPoint, endCurve, self.plotsAmt - midPointPos, True)
+        plots = startScale + endScale
+
+        self.plotsList = list(map(int, ReVidia.dataPlotter(plots, 1, self.audioBuffer // 2)))
+        if hasattr(self, 'proQ'):
+            self.proQ.put(['plots', self.plotsList])
+
+    def updatePlotsAmt(self):
+        self.plotsAmt = self.width // self.wholeWidth
+
+        if self.plotsAmt > self.audioBuffer:  # Max of buffer to avoid crash
+            self.plotsAmt = self.audioBuffer
+        if self.plotsAmt < 2: self.plotsAmt = 2  # Min of 2 point to avoid crash
+
+        if self.curvy:
+            window = int(self.plotsAmt * self.curvy[0])
+            if (window % 2) == 0: window += 1
+            if window < 5: window = 5
+            self.curvyValue = (window, self.curvy[1])  # Only used to init process
+
+            if hasattr(self, 'proQ'):
+                self.proQ.put(['curvy', self.curvyValue])
+
+    def updateFreqList(self):
+        # Assigns frequencies locations based on plots
+        freq = self.sampleRate / self.audioBuffer
+        self.freqList = list(map(lambda plot: plot * freq, self.plotsList))
+
+    def printBars(self):
+        blockList = ['\u2581', '\u2582', '\u2583', '\u2584', '\u2585', '\u2586', '\u2587']
+
+        ceiling = self.height * self.slices
+        for y in range(self.height):
+            limit = ceiling - (y * self.slices)
+            printBarLine = []
+            for barValue in self.plotValues:
+                if limit <= barValue:   # Full
+                    printBarLine.append('\u2588' * self.plotWidth)
+                elif (limit-self.slices) < barValue:   # Part
+                    block = barValue % self.slices
+                    char = blockList[block-1]
+                    printBarLine.append(char * self.plotWidth)
+                else:   # Empty
+                    printBarLine.append(' ' * self.plotWidth)
+            if (y * self.slices) < (ceiling - self.slices):
+                print((' ' * self.gapWidth).join(printBarLine))
+            else:
+               print((' ' * self.gapWidth).join(printBarLine), end='\r')
+
+    def printStats(self):
+        # Frame Counter to scale timings
+        if self.frames < 10000:
+            self.frames += 1
+        else:
+            self.frames = 0
+
+        block = self.frameRate // 10
+        if block < 1: block = 1
+        if self.frames % block == 0:
+            self.latency = str(round(((time.time() - self.delay) * 1000))) + 'ms'
+            self.latePercent = str(round(((1 / self.frameRate) / self.loopTime) * 100)) + '%'
+            
+        barsNum = str(self.plotsAmt)
+        if self.dataCap:
+            dataCap = str(int(self.dataCap**(1/2)))
+        else:
+            dataCap = 'Auto'
+        rawdbValue = ReVidia.getDB(self.audioPeak.value)
+        if rawdbValue == -float('Inf'): 
+            dbValue = '-Inf' + 'db'
+        else:
+            dbValue = str(round(rawdbValue, 1)) + 'db'
+        
+        print('')
+        print('Latency', 'Bars', 'Height', 'Volume', 'Deadline', sep='\t')
+        print(self.latency, barsNum, dataCap, dbValue, self.latePercent, sep='\t')
+
+    def getDevice(self, pulseAudio=False):
+        try:  # Get user default pulseaduio device
+            result = subprocess.getoutput('pactl info | grep "Default Sink:"')
+            self.userSink = result.split('Default Sink: ')[1] + '.monitor'
+            result = subprocess.getoutput('pactl info | grep "Default Source:"')
+            self.userSource = result.split('Default Source: ')[1]
+        except:
+            print('Can\'t find Pulseaudio: Outputs disabled')
+            self.userSink = 0
+            self.userSource = 0
+
+        # Run device getter on separate Process because the other PA won't start if not done
+        devQ = mp.Queue()
+        D1 = mp.Process(target=ReVidia.deviceNames, args=(devQ, self.userSink))
+        D1.start(), D1.join()
+        deviceList = devQ.get()
+
+        defaultList = []
+        if self.userSink:
+            defaultList.append('Default PulseAudio Output Device')
+        if self.userSource:
+            defaultList.append('Default PulseAudio Input Device')
+
+        deviceNames = defaultList + deviceList[0]
+        if 'Input: revidia_capture - ALSA' in deviceNames:  # Hide custom ALSA device
+            deviceNames.remove('Input: revidia_capture - ALSA')
+
+        if not pulseAudio:
+            import os
+            os.system('clear')
+            for i in range(len(deviceNames)):
+                print(str([i]) + ' ' + deviceNames[i])
+            select = int(input('Select Audio Device ID:'))
+            device = deviceNames[select]
+        else:   # Auto select PulseAudio
+            device = 'Input: revidia_capture - ALSA'
+            ok = 1
+
+        if device:
+            # Getting ID
+            if device == 'Default PulseAudio Output Device':
+                ID = self.userSink
+            elif device == 'Default PulseAudio Input Device':
+                ID = self.userSource
+            else:
+                ID = deviceList[1][deviceList[0].index(device)]
+
+            if 'Input:' in device:  # If PortAudio Index Num, continue
+                self.ID = ID
+                self.sampleRate = deviceList[2][deviceList[0].index(device)]
+            else:   # If PulseAudio input turn into ALSA input
+                import os
+                alsaFolder = os.getenv("HOME") + '/.asoundrc'
+
+                # Check/Clean lines for an old "pcm.revidia_capture" device
+                self.cleanLines = []
+                skip = 0
+                with open(alsaFolder, 'r') as alsaConf:
+                    allLines = alsaConf.readlines()
+                    for line in allLines:
+                        if not skip:
+                            if not 'pcm.revidia_capture' in line:
+                                self.cleanLines.append(line)
+                            else:
+                                skip = 1
+                        else:
+                            if '}' in line:
+                                skip = 0
+                if allLines != self.cleanLines:
+                    with open(alsaFolder, 'w') as alsaConf:
+                        alsaConf.writelines(self.cleanLines)
+
+                # Create ALSA device to connect to PulseAudio
+                with open(alsaFolder, 'a') as alsaConf:
+                    alsaConf.write('pcm.revidia_capture {'
+                                   '\n    type pulse'
+                                   '\n    device ' + ID +
+                                   '\n}')
+                # Rerun to select the device just created
+                self.getDevice(True)
+    
+    def checkInput(self):
+        # Controls ReVidia with character inputs
+        def getInput(win):
+            win.nodelay(True)
+            try:
+                key = win.getkey()
+                return key
+            except Exception:
+                pass  # No input
+
+        key = curses.wrapper(getInput)
+        # Matching keys, I wish Python had Switch Cases
+        if key:
+            if key == 't':  # Decrease Data Cap
+                if not self.dataCap:
+                    self.dataCap = max(self.proArray[:self.plotsAmt])
+
+                if self.dataCap > 1:
+                    self.dataCap /= 1.5
+                else:
+                    self.dataCap = 10
+            elif key == 'g':  # Increase Data Cap
+                if not self.dataCap:
+                    self.dataCap = max(self.proArray[:self.plotsAmt])
+
+                if self.dataCap < 10 ** 10:
+                    self.dataCap *= 1.5
+                else:
+                    self.dataCap = 10 ** 10
+
+            elif key == 'i':  # Check Stats
+                if self.checkStats:
+                    self.checkStats = 0
+                else:
+                    self.checkStats = 1
+
+            elif key == 'e':  # Decrease Plot Thickness
+                if self.plotWidth > 1:
+                    self.plotWidth -= 1
+
+                self.wholeWidth = self.plotWidth + self.gapWidth
+                self.updateStack()
+            elif key == 'r':  # Increase Plot Thickness
+                if self.plotWidth < 25:
+                    self.plotWidth += 1
+
+                self.wholeWidth = self.plotWidth + self.gapWidth
+                self.updateStack()
+
+            elif key == 'd':  # Decrease Gap Thickness
+                if self.gapWidth > 0:
+                    self.gapWidth -= 1
+
+                self.wholeWidth = self.plotWidth + self.gapWidth
+                self.updateStack()
+            elif key == 'f':  # Increase Gap Thickness
+                if self.gapWidth < 25:
+                    self.gapWidth += 1
+
+                self.wholeWidth = self.plotWidth + self.gapWidth
+                self.updateStack()
+
+            elif key == 'q':  # Decrease Curviness
+                index = self.curveList.index(self.curvy)
+                if index > 0:
+                    index -= 1
+
+                    self.curvy = self.curveList[index]
+
+                    if self.curvy:
+                        window = int(self.plotsAmt * self.curvy[0])
+                        if (window % 2) == 0: window += 1
+                        if window < 5: window = 5
+                        self.curvyValue = (window, self.curvy[1])  # Only used to init process
+                    else:
+                        self.curvyValue = 0
+
+                    if hasattr(self, 'proQ'):
+                        self.proQ.put(['curvy', self.curvyValue])
+            elif key == 'w':  # Increase Curviness
+                index = self.curveList.index(self.curvy)
+                if index < len(self.curveList) - 1:
+                    index += 1
+
+                    self.curvy = self.curveList[index]
+
+                if self.curvy:
+                    window = int(self.plotsAmt * self.curvy[0])
+                    if (window % 2) == 0: window += 1
+                    if window < 5: window = 5
+                    self.curvyValue = (window, self.curvy[1])  # Only used to init process
+                else:
+                    self.curvyValue = 0
+
+                if hasattr(self, 'proQ'):
+                    self.proQ.put(['curvy', self.curvyValue])
+                
+            elif key == 'a':  # Decrease Interpolation
+                index = self.interpList.index(self.interp)
+                if index > 0:
+                    index -= 1
+
+                    self.interp = self.interpList[index]
+                    if hasattr(self, 'proQ'):
+                        self.proQ.put(['interp', self.interp])
+            elif key == 's':  # Increase Interpolation
+                index = self.interpList.index(self.interp)
+                if index < len(self.interpList) - 1:
+                    index += 1
+
+                    self.interp = self.interpList[index]
+                    if hasattr(self, 'proQ'):
+                        self.proQ.put(['interp', self.interp])
+                
+            elif key == 'z':  # Decrease Buffer
+                index = self.audioBufferList.index(self.audioBuffer)
+                if index > 0:
+                    index -= 1
+                    
+                    self.audioBuffer = self.audioBufferList[index]
+
+                    if hasattr(self, 'dataQ'):
+                        # Update before buffer
+                        self.updateStack()
+                        self.dataQ.put(['buffer', self.audioBuffer])
+                        self.proQ.put(['buffer', self.audioBuffer])
+            elif key == 'x':  # Increase Buffer
+                index = self.audioBufferList.index(self.audioBuffer)
+                if index < len(self.audioBufferList) - 1:
+                    index += 1
+
+                    self.audioBuffer = self.audioBufferList[index]
+
+                    if hasattr(self, 'dataQ'):
+                        # Update before buffer
+                        self.updateStack()
+                        self.dataQ.put(['buffer', self.audioBuffer])
+                        self.proQ.put(['buffer', self.audioBuffer])
+
+    def killEvent(self, sig, frame):
+        print("Quitting")
+        try:
+            self.mainQ.put(1)  # End main thread
+            self.P1.terminate()  # Kill Processes
+            self.T1.terminate()
+            if hasattr(self, 'cleanLines'):  # Clean up ~/.asoundrc
+    
+                alsaFolder = os.getenv("HOME") + '/.asoundrc'
+                with open(alsaFolder, 'w') as alsaConf:
+                    alsaConf.writelines(self.cleanLines)
+        except RuntimeError:
+            print('Some processes won\'t close properly, closing anyway.')
+
+
+# Starts program
+if __name__ == '__main__':
+    ReVidiaTerm()
+
+

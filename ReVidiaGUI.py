@@ -329,7 +329,6 @@ class ReVidiaMain(QMainWindow):
         # Define placeholder stater variables
         self.plotValues = [0]
         self.plotSplitValues = [0]
-        self.dataList = [0]
         self.delay = 0
         self.frames = 0
         self.paintBusy = 0
@@ -352,6 +351,7 @@ class ReVidiaMain(QMainWindow):
         # Values to carry timings
         dataTime = mp.Value('d')
         self.proTime = mp.Value('d')
+        self.audioPeak = mp.Value('i', 0)
         # Arrays to transfer data between processes very fast
         self.dataArray = mp.Array('i', 16384)
         dataArray2 = mp.Array('i', 16384)
@@ -364,7 +364,7 @@ class ReVidiaMain(QMainWindow):
 
         # Create separate process for audio data processing
         self.P1 = mp.Process(target=ReVidia.processData, args=(
-            self.syncLock, dataTime, self.proTime, self.dataArray, dataArray2, self.proArray, self.proArray2, self.proQ, self.dataQ,
+            self.syncLock, dataTime, self.proTime, self.audioPeak, self.dataArray, dataArray2, self.proArray, self.proArray2, self.proQ, self.dataQ,
             self.frameRate, self.audioBuffer, self.plotsList, self.split, self.curvyValue, self.interp))
 
         # Separate main thread from event loop
@@ -387,8 +387,6 @@ class ReVidiaMain(QMainWindow):
             self.delay = self.proTime.value
             plotsData = self.proArray[:self.plotsAmt]
             splitPlotData = self.proArray2[:self.plotsAmt]
-            if self.checkDB:
-                self.dataList = self.dataArray[:self.audioBuffer]
 
             # Resize Data with user's defined height or the data's height
             self.plotValues = ReVidia.rescaleData(plotsData, self.dataCap, self.size().height())
@@ -890,7 +888,7 @@ class ReVidiaMain(QMainWindow):
 
     # Draws a dB bar in right corner
     def paintDB(self, event, painter):
-        dbValue = ReVidia.getDB(self.dataList)
+        dbValue = ReVidia.getDB(self.audioPeak.value)
 
         if dbValue < -1.0:
             painter.setPen(self.textPalette.color(QPalette.WindowText))
@@ -1294,28 +1292,28 @@ class ReVidiaMain(QMainWindow):
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Escape:
             self.meta.close()
-        if event.key() == Qt.Key_Shift:
-            if not hasattr(self, 'menuToggle'):
-                self.menuToggle = 0
-
-            if self.menuToggle == 0:
-                self.menuToggle = 1
-
+        # Toggle menu showing with tab
+        if event.key() == Qt.Key_Tab:
+            if self.menuWidget.isVisible():
                 self.menuWidget.hide()
-                return
+            else:
+                self.menuWidget.show()
+        # Toggle frameless mode with shift
+        if event.key() == Qt.Key_Shift:
+            if not hasattr(self, 'framelessToggle'):
+                self.framelessToggle = 0
 
-            if self.menuToggle == 1:
-                self.menuToggle = 2
+            if self.framelessToggle == 0:
+                self.framelessToggle = 1
 
                 self.meta.setWindowFlags(Qt.FramelessWindowHint)
                 self.meta.show()
                 return
             
-            if self.menuToggle == 2:
-                self.menuToggle = 0
+            if self.framelessToggle == 1:
+                self.framelessToggle = 0
 
                 self.meta.setWindowFlags(self.windowFlags() & ~Qt.FramelessWindowHint)
-                self.menuWidget.show()
                 self.meta.show()
                 return
 
@@ -1521,6 +1519,7 @@ class FFTDock(QDockWidget):
             self.main.reverseFFT = 0
 
     def setPlay(self, on):
+        from PyQt5.QtMultimedia import QSound
         if self.main.reverseFFT:
             self.record.setText('Stopped')
             self.record.setChecked(False)
@@ -1528,17 +1527,19 @@ class FFTDock(QDockWidget):
 
         if on:
             self.play.setText('Playing')
-            self.player = subprocess.Popen('aplay ./reverseFFT.wav', shell=True)
+            self.player = QSound('reverseFFT.wav')
+            self.player.play()
         else:
             self.play.setText('Stopped')
-            self.player.kill()
+            self.player.stop()
             del self.player
 
     def closeEvent(self, event):
         # Cleanup
         self.main.reverseFFT = 0
         if hasattr(self, 'player'):
-            self.player.kill()
+            self.player.stop()
+            del self.player
 
         ReVidiaMain.refitWindowForDock(self.main, self)
 

@@ -89,7 +89,7 @@ def collectData(dataTime, dataArr, dataArr2, dataQ, device, buffer, split):
 
 
 # Processes data into Y values of plots
-def processData(syncLock, dataTime, proTime, dataArr, dataArr2, proArr, proArr2, proQ, dataQ,
+def processData(syncLock, dataTime, proTime, audioPeak, dataArr, dataArr2, proArr, proArr2, proQ, dataQ,
                 frameRate, buffer, plotsList, split, curvy, interp):
 
     killTimeout = 3  # How many seconds to wait for main thread
@@ -132,6 +132,7 @@ def processData(syncLock, dataTime, proTime, dataArr, dataArr2, proArr, proArr2,
 
         # Send out data
         proTime.value = delayTime
+        audioPeak.value = max(dataList)
         proArr[:dataLen] = finalValues
         if split:
             proArr2[:dataLen] = finalSplitValues
@@ -199,7 +200,7 @@ def assignNotes(freqList):
 
 # Calculates decibel
 def getDB(data):
-    amp = max(data) / 32767
+    amp = data / 32767
     if amp < 0:
         amp *= -1
     if amp != 0:

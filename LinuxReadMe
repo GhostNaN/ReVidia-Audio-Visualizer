@@ -89,7 +89,8 @@ Shortcuts:
 
 Scroll - Change plot height on the fly
 Right-Click-Drag - Moves the window around
-Shift - Press once to hide toolbar, Once more to hide the borders and then on more time to bring up the borders and the toolbar again.
+Tab - Toggle toolbar
+Shift - Toggle borders
 Esc - Close program 
 
 
@@ -98,7 +99,7 @@ Tips:
 - Due to timings never being perfect, setting a fps slightly above your refresh rate is a good idea.
 
 - If you like to make the background disappear go into Design|Color|Background Color
-and change the alpha channel to 0. Then press SHIFT twice for the borders to go away too.
+and change the alpha channel to 0. Then press TAB and SHIFT.
     - Using this effect on top of a non-Fullscreen YouTube videos is pretty fun.
 
 - Lower the Main|Interpolation and Main|Audio Buffer for more responsiveness, this helps when you have a low FPS set.

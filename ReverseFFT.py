@@ -1,5 +1,3 @@
-#!venv2/bin/python
-
 import numpy as np
 import wave
 
