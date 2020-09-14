@@ -1287,6 +1287,12 @@ class ReVidiaMain(QMainWindow):
     # When a dock is added or removed the main window size will remain the same
     def refitWindowForDock(self, dock):
         self.dockMod = dock
+        # Semi-fix for background color when docked
+        color = self.palette().color(self.backgroundRole())
+        # Hex colors are a no go so...
+        colorStr = 'rgb(' + str(color.red()) +','+ str(color.blue()) +','+ str(color.green()) + ')'
+        dock.setStyleSheet(".QWidget {background-color: " + colorStr + "}")
+        dock.setAutoFillBackground(True)
 
     # Adds keyboard inputs
     def keyPressEvent(self, event):
