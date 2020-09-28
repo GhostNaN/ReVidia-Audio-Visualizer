@@ -1,6 +1,8 @@
 ![Preview](Preview.png)
 # ReVidia Audio Visualizer
 ### A highly customizable real time audio visualizer on Linux/Windows
+##### Ignore the terminal version use this one instead:
+https://github.com/GhostNaN/recidia-audio-visualizer
 #### Branches:
 - Linux: master branch
 - Windows: win-port branch 
